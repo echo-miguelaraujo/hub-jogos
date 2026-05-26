@@ -70,75 +70,37 @@ function RuleRow({ icon, text }) {
   );
 }
 
-// ── IMPOSTOR DATA ──────────────────────────────────────
+// ── BANCOS DE DADOS LOCAIS (FALLBACKS) ─────────────────
+// Estes dados são usados caso a API de IA falhe (CORS/Sem chave)
+const QUEMSOUEU_BASE = ['Batman', 'Bob Esponja', 'Pelé', 'Neymar', 'Silvio Santos', 'Anitta', 'Harry Potter', 'Mickey Mouse', 'Homem-Aranha', 'Albert Einstein', 'Coringa', 'Shrek', 'Goku', 'Beyoncé', 'Monalisa'];
+
+const DESTINO_BASE = {
+  'Cidades do Mundo': { word: 'Tóquio', hints: ['Luzes e tradição', 'Longe do Brasil', 'Terra do sol nascente', 'Maior metrópole', 'Capital do Japão'] },
+  'Filmes': { word: 'Matrix', hints: ['Escolhas difíceis', 'Realidade ou ilusão?', 'Pílula azul ou vermelha', 'Keanu Reeves', 'Desviando de balas'] },
+  'Comidas': { word: 'Feijoada', hints: ['Demora para fazer', 'Prato de quarta e sábado', 'Vai bem com couve', 'Levemente pesado', 'Mistura de feijão e carnes'] },
+  'Animais': { word: 'Camaleão', hints: ['Observador silencioso', 'Olhos independentes', 'Língua rápida', 'Mestre do disfarce', 'Muda de cor'] },
+  'Países': { word: 'Egito', hints: ['Berço de civilizações', 'Areia e mistério', 'Rio Nilo', 'Faraós', 'Terra das Pirâmides'] },
+  'Celebridades': { word: 'Michael Jackson', hints: ['Rei de algo', 'Luva branca', 'Moonwalk', 'Thriller', 'Rei do Pop'] },
+  'Objetos Curiosos': { word: 'Telescópio', hints: ['Vai além', 'Lentes', 'Aumenta o que está longe', 'Observa as estrelas', 'Usado por astrônomos'] },
+  'Personagens': { word: 'Darth Vader', hints: ['Respiração pesada', 'Lado sombrio', 'Sabre de luz vermelho', 'Pai do Luke', 'Vilão de Star Wars'] }
+};
+
 const BASE_PAIRS = [
   { category: 'Comida', words: ['Pizza', 'Lasanha'], hint: 'Fale sobre sabor, textura ou onde costuma comer' },
   { category: 'Comida', words: ['Hambúrguer', 'Sanduíche'], hint: 'Fale sobre ingredientes, tamanho ou onde pedir' },
   { category: 'Comida', words: ['Café', 'Chá'], hint: 'Fale sobre o ritual de tomar, o cheiro ou o momento do dia' },
   { category: 'Comida', words: ['Churrasco', 'Feijoada'], hint: 'Fale sobre a ocasião, quem faz ou os acompanhamentos' },
-  { category: 'Comida', words: ['Sushi', 'Temaki'], hint: 'Fale sobre ingredientes, apresentação ou onde comer' },
-  { category: 'Comida', words: ['Sorvete', 'Mousse'], hint: 'Fale sobre sabores favoritos, temperatura ou textura' },
-  { category: 'Comida', words: ['Tapioca', 'Crepe'], hint: 'Fale sobre recheios, onde costuma comer e a textura' },
   { category: 'Lugar', words: ['Praia', 'Piscina'], hint: 'Fale sobre o que se faz lá, o ambiente ou como você se sente' },
   { category: 'Lugar', words: ['Escola', 'Igreja'], hint: 'Fale sobre o ambiente, as pessoas ou o que acontece lá' },
-  { category: 'Lugar', words: ['Cinema', 'Teatro'], hint: 'Fale sobre a experiência, o ambiente ou o que você vê' },
-  { category: 'Lugar', words: ['Academia', 'Parque'], hint: 'Fale sobre o que se faz lá, a frequência ou a sensação' },
-  { category: 'Lugar', words: ['Aeroporto', 'Rodoviária'], hint: 'Fale sobre a movimentação, o que acontece lá ou a espera' },
-  { category: 'Lugar', words: ['Shopping', 'Mercado'], hint: 'Fale sobre o movimento, o que tem lá ou para que serve' },
-  { category: 'Lugar', words: ['Hospital', 'UPA'], hint: 'Fale sobre o ambiente, por que as pessoas vão ou como é esperar' },
   { category: 'Celebridade', words: ['Michael Jackson', 'Elvis Presley'], hint: 'Fale sobre o impacto na música, o estilo ou a fama' },
-  { category: 'Celebridade', words: ['Barack Obama', 'Donald Trump'], hint: 'Fale sobre a política, o discurso ou a presença pública' },
-  { category: 'Celebridade', words: ['Pelé', 'Ronaldo'], hint: 'Fale sobre os títulos, a carreira ou o legado no esporte' },
-  { category: 'Celebridade', words: ['Elon Musk', 'Bill Gates'], hint: 'Fale sobre as empresas, as ideias ou a influência' },
-  { category: 'Celebridade', words: ['Neymar', 'Mbappé'], hint: 'Fale sobre o estilo de jogo, os gols ou os clubes' },
-  { category: 'Celebridade', words: ['Madonna', 'Beyoncé'], hint: 'Fale sobre os shows, o impacto cultural ou as músicas' },
   { category: 'Animal', words: ['Leão', 'Tigre'], hint: 'Fale sobre onde vive, o que come ou o comportamento' },
-  { category: 'Animal', words: ['Gato', 'Cachorro'], hint: 'Fale sobre o comportamento, o que ele faz em casa ou o jeito' },
-  { category: 'Animal', words: ['Tubarão', 'Baleia'], hint: 'Fale sobre o tamanho, onde vive ou como se move' },
-  { category: 'Animal', words: ['Elefante', 'Hipopótamo'], hint: 'Fale sobre o tamanho, onde vive ou como se comporta' },
-  { category: 'Animal', words: ['Cavalo', 'Zebra'], hint: 'Fale sobre o movimento, onde é visto ou para que serve' },
-  { category: 'Animal', words: ['Águia', 'Falcão'], hint: 'Fale sobre o voo, a visão ou onde costuma ser visto' },
   { category: 'Esporte', words: ['Futebol', 'Futsal'], hint: 'Fale sobre as regras, como se joga ou onde é praticado' },
-  { category: 'Esporte', words: ['Basquete', 'Vôlei'], hint: 'Fale sobre o time, as jogadas ou a dinâmica' },
-  { category: 'Esporte', words: ['Boxe', 'MMA'], hint: 'Fale sobre a luta, a preparação ou a intensidade' },
-  { category: 'Esporte', words: ['Surfe', 'Wakeboard'], hint: 'Fale sobre as ondas, o equilíbrio ou a sensação' },
-  { category: 'Esporte', words: ['Tênis', 'Badminton'], hint: 'Fale sobre a raquete, o ritmo ou onde se joga' },
-  { category: 'Esporte', words: ['Natação', 'Polo Aquático'], hint: 'Fale sobre o ambiente, o esforço ou a técnica' },
   { category: 'Tecnologia', words: ['WhatsApp', 'Telegram'], hint: 'Fale sobre o uso, as funcionalidades ou quem usa' },
-  { category: 'Tecnologia', words: ['Netflix', 'Disney+'], hint: 'Fale sobre o conteúdo, o hábito de assistir ou os preços' },
-  { category: 'Tecnologia', words: ['Instagram', 'TikTok'], hint: 'Fale sobre o tipo de conteúdo, o tempo gasto ou o público' },
-  { category: 'Tecnologia', words: ['PlayStation', 'Xbox'], hint: 'Fale sobre os jogos, o controle ou a experiência' },
-  { category: 'Tecnologia', words: ['iPhone', 'Samsung Galaxy'], hint: 'Fale sobre o design, as funções ou o preço' },
-  { category: 'Tecnologia', words: ['Spotify', 'Deezer'], hint: 'Fale sobre as playlists, o uso diário ou a biblioteca' },
   { category: 'Personagem', words: ['Batman', 'Superman'], hint: 'Fale sobre os poderes, a história ou os filmes' },
-  { category: 'Personagem', words: ['Harry Potter', 'Hermione Granger'], hint: 'Fale sobre os poderes, a personalidade ou as aventuras' },
-  { category: 'Personagem', words: ['Darth Vader', 'Thanos'], hint: 'Fale sobre o poder, a motivação ou o impacto' },
-  { category: 'Personagem', words: ['Capitão América', 'Thor'], hint: 'Fale sobre os poderes, a origem ou os filmes' },
-  { category: 'Personagem', words: ['Coringa', 'Lex Luthor'], hint: 'Fale sobre a vilania, o plano ou a personalidade' },
   { category: 'Veículo', words: ['Avião', 'Helicóptero'], hint: 'Fale sobre como voa, para que serve ou a experiência' },
-  { category: 'Veículo', words: ['Moto', 'Bicicleta'], hint: 'Fale sobre a sensação de andar, o uso ou o risco' },
-  { category: 'Veículo', words: ['Metrô', 'Trem'], hint: 'Fale sobre o uso, a movimentação ou a experiência' },
-  { category: 'Veículo', words: ['Carro', 'SUV'], hint: 'Fale sobre o conforto, o uso ou o tamanho' },
-  { category: 'Veículo', words: ['Lancha', 'Veleiro'], hint: 'Fale sobre onde anda, a velocidade ou a sensação' },
   { category: 'Profissão', words: ['Médico', 'Dentista'], hint: 'Fale sobre o que faz, onde trabalha ou como as pessoas se sentem' },
-  { category: 'Profissão', words: ['Professor', 'Tutor'], hint: 'Fale sobre o ensino, o ambiente ou a relação com o aluno' },
-  { category: 'Profissão', words: ['Bombeiro', 'Policial'], hint: 'Fale sobre o risco, o uniforme ou o que faz' },
-  { category: 'Profissão', words: ['Ator', 'Cantor'], hint: 'Fale sobre as apresentações, a fama ou o talento' },
-  { category: 'Profissão', words: ['Chef', 'Confeiteiro'], hint: 'Fale sobre o que cria, o ambiente ou a habilidade' },
   { category: 'Objeto', words: ['Guitarra', 'Violão'], hint: 'Fale sobre o som, como se toca ou quem usa' },
-  { category: 'Objeto', words: ['Cadeira', 'Banco'], hint: 'Fale sobre onde está, o conforto ou para que serve' },
-  { category: 'Objeto', words: ['Mochila', 'Bolsa'], hint: 'Fale sobre o que carrega, quem usa ou o tamanho' },
-  { category: 'Objeto', words: ['Caneta', 'Lápis'], hint: 'Fale sobre o uso, quem usa ou o que escreve' },
-  { category: 'Objeto', words: ['Espelho', 'Janela'], hint: 'Fale sobre onde fica, para que serve ou o que reflete' },
-  { category: 'Data / Festa', words: ['Natal', 'Ano Novo'], hint: 'Fale sobre o que se faz, quem reúne ou as tradições' },
-  { category: 'Data / Festa', words: ['Carnaval', 'Réveillon'], hint: 'Fale sobre a festa, o ambiente ou as tradições' },
-  { category: 'Data / Festa', words: ['Aniversário', 'Casamento'], hint: 'Fale sobre a celebração, os convidados ou as tradições' },
-  { category: 'Data / Festa', words: ['Páscoa', 'Dia das Crianças'], hint: 'Fale sobre os presentes, as tradições ou quem participa' },
   { category: 'Natureza', words: ['Chuva', 'Tempestade'], hint: 'Fale sobre a sensação, o som ou o que causa' },
-  { category: 'Natureza', words: ['Rio', 'Lago'], hint: 'Fale sobre o movimento, o que tem lá ou como é visitar' },
-  { category: 'Natureza', words: ['Floresta', 'Mata'], hint: 'Fale sobre os animais, o ambiente ou a vegetação' },
-  { category: 'Natureza', words: ['Sol', 'Lua'], hint: 'Fale sobre a luz, o horário ou o que representa' },
-  { category: 'Natureza', words: ['Montanha', 'Colina'], hint: 'Fale sobre a altura, a paisagem ou a dificuldade' },
 ];
 
 const CAT_ICONS = {
@@ -147,16 +109,111 @@ const CAT_ICONS = {
   'Objeto':'🎲','Data / Festa':'🎉','Natureza':'🌿',
 };
 
-async function generateImpostorPairs(usedKeys) {
-  const usedStr = usedKeys.length > 0 ? 'Pares já usados (NÃO repita): ' + usedKeys.join(', ') + '.' : '';
-  const prompt = 'Você é um gerador de pares de palavras para o jogo Impostor.\nRegras: a maioria recebe a mesma palavra, 1 recebe uma DIFERENTE mas relacionada ao mesmo tema.\n' + usedStr + '\nGere EXATAMENTE 15 pares em português brasileiro, categorias VARIADAS e CRIATIVAS.\nResponda SOMENTE JSON válido, sem markdown:\n[{"category":"...","words":["A","B"],"hint":"Dica curta de como falar sem entregar a palavra"},...]';
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, messages: [{ role: 'user', content: prompt }] }),
+// ── CONFIGURAÇÃO DA IA (GEMINI) ────────────────────────
+// Cole sua chave aqui dentro das aspas!
+const GEMINI_API_KEY = "AIzaSyAM-CXptezUw6ErjUz--r2_XUkdU0Ph9DM"; 
+
+/**
+ * Função central para chamar a API gratuita do Gemini.
+ * Ela envia o nosso "prompt" (pedido) e devolve a resposta em texto.
+ */
+async function callGemini(prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+  
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      // A temperatura controla a criatividade (0.7 é um bom meio-termo)
+      generationConfig: { temperature: 0.7 } 
+    })
   });
+
+  if (!res.ok) throw new Error('Falha ao conectar com o Gemini');
+
   const data = await res.json();
-  const text = (data.content || []).find(b => b.type === 'text')?.text || '[]';
-  return JSON.parse(text.replace(/```json|```/g, '').trim());
+  const texto = data.candidates[0].content.parts[0].text;
+  
+  // O Gemini costuma devolver JSON dentro de blocos de código markdown (```json ... ```).
+  // Essa linha abaixo limpa essa formatação para não quebrar nosso aplicativo.
+  return texto.replace(/```json|```/g, '').trim();
+}
+
+// ── FUNÇÕES DE IA (COM FALLBACK LOCAL SEGURO) ──────────
+
+async function generateImpostorPairs(usedKeys) {
+  try {
+    const usedStr = usedKeys.length > 0 ? 'Pares já usados (NÃO repita): ' + usedKeys.join(', ') + '.' : '';
+    const prompt = 'Você é um gerador de pares de palavras para o jogo Impostor.\nRegras: a maioria recebe a mesma palavra, 1 recebe uma DIFERENTE mas relacionada ao mesmo tema.\n' + usedStr + '\nGere EXATAMENTE 15 pares em português brasileiro, categorias VARIADAS e CRIATIVAS.\nResponda SOMENTE JSON válido, no formato: [{"category":"...","words":["A","B"],"hint":"Dica curta"}]. Não adicione nenhum outro texto.';
+    
+    const textoLimpo = await callGemini(prompt);
+    return JSON.parse(textoLimpo);
+  } catch (error) {
+    console.error("Erro na IA do Impostor, usando fallback:", error);
+    return shuffle(BASE_PAIRS).slice(0, 15);
+  }
+}
+
+async function generateMimicaWords(temas, usedWords) {
+  try {
+    const temasStr = temas.join(', ');
+    const usedStr = usedWords.length > 0 ? 'Palavras já usadas (não repita): ' + usedWords.slice(-30).join(', ') + '.' : '';
+    const prompt = `Você é um gerador de palavras para o jogo Mímica.\nTemas escolhidos: ${temasStr}.\n${usedStr}\nGere EXATAMENTE 20 palavras em português brasileiro, misturando os temas proporcionalmente. Cada palavra deve ser concreta e fácil de mimar.\nResponda SOMENTE um array JSON válido: ["palavra1","palavra2"]. Sem explicações.`;
+    
+    const textoLimpo = await callGemini(prompt);
+    return JSON.parse(textoLimpo);
+  } catch (error) {
+    console.error("Erro na IA da Mímica, usando fallback:", error);
+    let pool = [];
+    temas.forEach(t => { if (MIMICA_BASE[t]) pool = [...pool, ...MIMICA_BASE[t]]; });
+    return shuffle(pool.filter(w => !usedWords.includes(w))).slice(0, 20);
+  }
+}
+
+async function generateIdentities(categories, numPlayers, usedNames) {
+  try {
+    const catsStr = categories.join(', ');
+    const usedStr = usedNames.length > 0 ? 'Não repita: ' + usedNames.join(', ') + '.' : '';
+    const prompt = `Você é um gerador de identidades para o jogo "Quem Sou Eu?"\nCategorias: ${catsStr}.\n${usedStr}\nGere EXATAMENTE ${numPlayers} identidades únicas e bem conhecidas em português brasileiro.\nResponda SOMENTE um array JSON: ["Nome1","Nome2"]. Sem textos extras.`;
+    
+    const textoLimpo = await callGemini(prompt);
+    return JSON.parse(textoLimpo);
+  } catch (error) {
+    console.error("Erro na IA do Quem Sou Eu, usando fallback:", error);
+    const pool = QUEMSOUEU_BASE.filter(name => !usedNames.includes(name));
+    return shuffle(pool.length >= numPlayers ? pool : QUEMSOUEU_BASE).slice(0, numPlayers);
+  }
+}
+
+async function generateDestinoWord(theme) {
+  try {
+    const prompt = `Você é um gerador de palavras para o jogo "O Próximo Destino".\nTema: ${theme}\nGere UMA palavra/nome criativo e interessante para o tema, em português.\nResponda SOMENTE o nome, sem nenhuma explicação ou aspas.`;
+    
+    const textoLimpo = await callGemini(prompt);
+    return textoLimpo;
+  } catch (error) {
+    console.error("Erro na IA do Destino (Palavra), usando fallback:", error);
+    const defaultTema = DESTINO_BASE[theme] ? theme : 'Filmes';
+    return DESTINO_BASE[defaultTema].word;
+  }
+}
+
+async function generateDestinoHints(word, theme) {
+  try {
+    const prompt = `Você é um gerador de dicas para o jogo "O Próximo Destino".\nPalavra secreta: "${word}"\nTema: ${theme}\n\nGere EXATAMENTE 5 dicas em ordem da MAIS DIFÍCIL para a MAIS FÁCIL.\nDica 1: muito vaga (quase impossível)\nDica 5: quase entrega a resposta\n\nResponda SOMENTE JSON: {"dicas":["dica1","dica2","dica3","dica4","dica5"]}. Sem textos extras.`;
+    
+    const textoLimpo = await callGemini(prompt);
+    const parsed = JSON.parse(textoLimpo);
+    return parsed.dicas || [];
+  } catch (error) {
+    console.error("Erro na IA do Destino (Dicas), usando fallback:", error);
+    const defaultTema = DESTINO_BASE[theme] ? theme : 'Filmes';
+    if (word.toLowerCase() === DESTINO_BASE[defaultTema].word.toLowerCase()) {
+      return DESTINO_BASE[defaultTema].hints;
+    }
+    return ['Dica muito vaga', 'Um pouco mais claro', 'Dica moderada', 'Quase lá', 'Basicamente é isso'];
+  }
 }
 
 // ── IMPOSTOR GAME ─────────────────────────────────────
@@ -189,7 +246,7 @@ function ImpostorGame({ numPlayers, onBack }) {
   const pickNext = () => {
     if (deckRef.current.length === 0) {
       const recycle = usedRef.current.splice(0, Math.max(0, usedRef.current.length - 20));
-      deckRef.current = shuffle(recycle);
+      deckRef.current = shuffle(recycle.length ? recycle : BASE_PAIRS);
     }
     const entry = deckRef.current.shift();
     usedRef.current.push(entry);
@@ -488,10 +545,6 @@ function ScoreWheel({ onDone }) {
   const spin = () => {
     if (spinning || result !== null) return;
     const score = Math.floor(Math.random() * 11);
-    // Segment i is drawn starting at i*SEG_DEG from top.
-    // Center of segment 'score' is at: score*SEG_DEG + SEG_DEG/2 (in wheel local coords, from top)
-    // To put that center under the top pointer, we rotate the wheel by -(center angle).
-    // normalizedTarget is the final CSS rotation angle (mod 360) we want.
     const segCenter = score * SEG_DEG + SEG_DEG / 2;
     const normalizedTarget = ((360 - segCenter) % 360);
     const currentMod = ((angle % 360) + 360) % 360;
@@ -508,7 +561,6 @@ function ScoreWheel({ onDone }) {
       if (!startTimeRef.current) startTimeRef.current = ts;
       const elapsed = ts - startTimeRef.current;
       const progress = Math.min(elapsed / durationRef.current, 1);
-      // ease out cubic
       const eased = 1 - Math.pow(1 - progress, 3);
       const cur = startAngleRef.current + (targetAngleRef.current - startAngleRef.current) * eased;
       setAngle(cur);
@@ -557,18 +609,14 @@ function ScoreWheel({ onDone }) {
   const sd = result !== null ? SCORE_DESCS[result] : null;
 
   return e('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, width: '100%' } },
-    // Wheel container
     e('div', { style: { position: 'relative', width: 280, height: 280 } },
-      // Pointer
       e('div', { style: {
         position: 'absolute', top: -6, left: '50%', transform: 'translateX(-50%)',
         width: 0, height: 0,
         borderLeft: '10px solid transparent', borderRight: '10px solid transparent',
         borderTop: '20px solid #e8e2d9', zIndex: 10,
       }}),
-      // SVG wheel
       e('svg', { width: 280, height: 280, viewBox: '0 0 280 280', style: { transform: 'rotate(' + angle + 'deg)', transition: spinning ? 'none' : 'none', display: 'block' } },
-        // Segments
         ...segments.map(seg =>
           e('g', { key: seg.i },
             e('path', { d: seg.d, fill: colors[seg.i], stroke: '#0a0a0a', strokeWidth: 2 }),
@@ -577,12 +625,9 @@ function ScoreWheel({ onDone }) {
               fontFamily: "'DM Serif Display',Georgia,serif" }, seg.i)
           )
         ),
-        // Center circle
         e('circle', { cx, cy, r: 18, fill: '#0a0a0a', stroke: '#222', strokeWidth: 2 }),
       ),
     ),
-
-    // Spin button or result
     result === null
       ? e('button', {
           style: { ...sh.bigBtn, opacity: spinning ? 0.5 : 1, minWidth: 180 },
@@ -678,38 +723,13 @@ function ScoreGame({ numPlayers, onBack }) {
 }
 
 // ── MÍMICA POR EQUIPES ────────────────────────────────
-const MIMICA_TEMAS = ['Filmes', 'Esportes', 'Ações Absurdas', 'Cultura Pop', 'Animais', 'Profissões', 'Objetos', 'Comidas'];
-const MIMICA_BASE = {
-  'Filmes': ['Titanic','Avatar','Vingadores','Shrek','Homem-Aranha','O Rei Leão','Interstellar','Matrix','Harry Potter','Frozen'],
-  'Esportes': ['Futebol','Surfe','Natação','Basquete','Golfe','Tênis','Ciclismo','Vôlei','Boxe','Hipismo'],
-  'Ações Absurdas': ['Escorregar na banana','Lutar contra fantasma','Tocar harpa embaixo dágua','Espirrar na hora errada','Perseguir galinha'],
-  'Cultura Pop': ['TikTok','Selfie','Meme','Podcast','Influencer','Unboxing','Live','Reels','Stories','Viral'],
-  'Animais': ['Elefante','Golfinho','Preguiça','Pinguim','Girafa','Coala','Flamingo','Polvos','Canguru','Iguana'],
-  'Profissões': ['Dentista','Astronauta','Chef de cozinha','Bombeiro','Maestro','Mágico','Piloto','Detetive','DJ','Árbitro'],
-  'Objetos': ['Geladeira','Guarda-chuva','Espelho','Violão','Escada','Lupa','Martelo','Foguete','Tesoura','Globo'],
-  'Comidas': ['Brigadeiro','Churrasco','Tapioca','Ramen','Crepe','Fondue','Paella','Pão de queijo','Açaí','Sushi'],
-};
-
-async function generateMimicaWords(temas, usedWords) {
-  const temasStr = temas.join(', ');
-  const usedStr = usedWords.length > 0 ? 'Palavras já usadas (não repita): ' + usedWords.slice(-30).join(', ') + '.' : '';
-  const prompt = `Você é um gerador de palavras para o jogo Mímica.\nTemas escolhidos: ${temasStr}.\n${usedStr}\nGere EXATAMENTE 20 palavras em português brasileiro, misturando os temas proporcionalmente.\nCada palavra deve ser concreta e fácil de mimar.\nResponda SOMENTE um array JSON válido sem markdown: ["palavra1","palavra2",...]`;
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 500, messages: [{ role: 'user', content: prompt }] }),
-  });
-  const data = await res.json();
-  const text = (data.content || []).find(b => b.type === 'text')?.text || '[]';
-  return JSON.parse(text.replace(/```json|```/g, '').trim());
-}
-
 function MimicaGame({ numPlayers, onBack }) {
   const e = React.createElement;
   const orangeBg = 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(224,112,64,0.07) 0%, transparent 70%)';
   const P = { CONFIG:'config', TEMAS:'temas', MODE:'mode', SETUP_TEAMS:'setup_teams', ROUND_START:'round_start', MIMING:'miming', ROUND_END:'round_end', GAME_END:'game_end' };
   const [phase, setPhase] = useState(P.CONFIG);
   const [selectedTemas, setSelectedTemas] = useState(['Filmes','Cultura Pop','Ações Absurdas']);
-  const [gameMode, setGameMode] = useState(null); // 'unlimited' | 'race'
+  const [gameMode, setGameMode] = useState(null); 
   const [roundTime, setRoundTime] = useState(60);
   const [targetScore, setTargetScore] = useState(10);
   const [raceCount, setRaceCount] = useState(3);
@@ -723,33 +743,22 @@ function MimicaGame({ numPlayers, onBack }) {
   const [countdown, setCountdown] = useState(null);
   const [hits, setHits] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [isMimico, setIsMimico] = useState(false);
   const [mimicoIdx, setMimicoIdx] = useState(0);
   const timerRef = useRef(null);
 
   const teamColors = ['#e07040','#4a9fd4'];
   const teamNames = ['Time A', 'Time B'];
 
-  const buildDeck = () => {
-    let pool = [];
-    selectedTemas.forEach(t => { if (MIMICA_BASE[t]) pool = [...pool, ...MIMICA_BASE[t]]; });
-    return shuffle(pool.filter(w => !usedWords.includes(w)));
-  };
-
   const startDeck = async () => {
     setLoading(true);
     try {
-      const ai = await generateMimicaWords(selectedTemas, usedWords);
-      const base = buildDeck();
-      const combined = shuffle([...base, ...ai.filter(w => !usedWords.includes(w))]);
+      const combined = await generateMimicaWords(selectedTemas, usedWords);
       setDeck(combined);
       setLoading(false);
       return combined;
     } catch(ex) {
-      const base = buildDeck();
-      setDeck(base);
       setLoading(false);
-      return base;
+      return [];
     }
   };
 
@@ -995,21 +1004,6 @@ function MimicaGame({ numPlayers, onBack }) {
 }
 
 // ── QUEM SOU EU ───────────────────────────────────────
-const QUEMSOUEU_CATS = ['Celebridades', 'Personagens de Desenho', 'Figuras Históricas', 'Heróis e Vilões', 'Personagens de Filme', 'Animais Famosos'];
-
-async function generateIdentities(categories, numPlayers, usedNames) {
-  const catsStr = categories.join(', ');
-  const usedStr = usedNames.length > 0 ? 'Não repita: ' + usedNames.join(', ') + '.' : '';
-  const prompt = `Você é um gerador de identidades para o jogo "Quem Sou Eu?"\nCategorias: ${catsStr}.\n${usedStr}\nGere EXATAMENTE ${numPlayers} identidades únicas e bem conhecidas em português brasileiro.\nResponda SOMENTE um array JSON: ["Nome1","Nome2",...]`;
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 300, messages: [{ role: 'user', content: prompt }] }),
-  });
-  const data = await res.json();
-  const text = (data.content || []).find(b => b.type === 'text')?.text || '[]';
-  return JSON.parse(text.replace(/```json|```/g, '').trim());
-}
-
 function QuemSouEuGame({ numPlayers, onBack }) {
   const e = React.createElement;
   const purpleBg = 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(160,112,224,0.07) 0%, transparent 70%)';
@@ -1079,9 +1073,6 @@ function QuemSouEuGame({ numPlayers, onBack }) {
     setGuessInput('');
     setPhase(P.PLAYING);
   };
-
-  const getOtherIdentities = (myIdx) =>
-    identities.map((id, i) => ({ name: 'Jogador ' + (i + 1), identity: id, isSelf: i === myIdx }));
 
   if (phase === P.CAT) return e('div', { style: sh.gameRoot },
     e('div', { style: { ...sh.bg, background: purpleBg } }),
@@ -1216,36 +1207,12 @@ function QuemSouEuGame({ numPlayers, onBack }) {
 }
 
 // ── O PRÓXIMO DESTINO ─────────────────────────────────
-const DESTINO_TEMAS = ['Cidades do Mundo', 'Filmes', 'Comidas', 'Animais', 'Países', 'Celebridades', 'Objetos Curiosos', 'Personagens'];
-
-async function generateDestinoHints(word, theme) {
-  const prompt = `Você é um gerador de dicas para o jogo "O Próximo Destino" para casais.\nPalavra secreta: "${word}"\nTema: ${theme}\n\nGere EXATAMENTE 5 dicas em ordem da MAIS DIFÍCIL para a MAIS FÁCIL.\nDica 1: muito vaga e poética (quase impossível adivinhar)\nDica 2: um pouco mais específica\nDica 3: moderada\nDica 4: bem sugestiva\nDica 5: quase entrega a resposta\n\nResponda SOMENTE JSON: {"dicas":["dica1","dica2","dica3","dica4","dica5"]}`;
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 400, messages: [{ role: 'user', content: prompt }] }),
-  });
-  const data = await res.json();
-  const text = (data.content || []).find(b => b.type === 'text')?.text || '{}';
-  const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
-  return parsed.dicas || [];
-}
-
-async function generateDestinoWord(theme) {
-  const prompt = `Você é um gerador de palavras para o jogo "O Próximo Destino".\nTema: ${theme}\nGere UMA palavra/nome criativo e interessante para o tema, em português.\nResponda SOMENTE o nome, sem explicação.`;
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 50, messages: [{ role: 'user', content: prompt }] }),
-  });
-  const data = await res.json();
-  return ((data.content || []).find(b => b.type === 'text')?.text || '').trim();
-}
-
 function DestinoGame({ numPlayers, onBack }) {
   const e = React.createElement;
   const roseBg = 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(224,96,128,0.07) 0%, transparent 70%)';
-  const P = { MODE:'mode', SETUP:'setup', HINTS_SETUP:'hints_setup', WAIT:'wait', PLAYING:'playing', GUESSED:'guessed', REVEAL:'reveal', END:'end' };
+  const P = { MODE:'mode', SETUP:'setup', WAIT:'wait', PLAYING:'playing', GUESSED:'guessed', REVEAL:'reveal', END:'end' };
   const [phase, setPhase] = useState(P.MODE);
-  const [gameMode, setGameMode] = useState(null); // 'ai' | 'human'
+  const [gameMode, setGameMode] = useState(null);
   const [selectedTheme, setSelectedTheme] = useState('Cidades do Mundo');
   const [secretWord, setSecretWord] = useState('');
   const [wordInput, setWordInput] = useState('');
@@ -1253,14 +1220,14 @@ function DestinoGame({ numPlayers, onBack }) {
   const [customHints, setCustomHints] = useState(['','','','','']);
   const [currentHint, setCurrentHint] = useState(0);
   const [scores, setScores] = useState([0, 0]);
-  const [currentPlayer, setCurrentPlayer] = useState(0); // 0 = player 1, 1 = player 2
+  const [currentPlayer, setCurrentPlayer] = useState(0); 
   const [playerNames] = useState(['Jogador 1', 'Jogador 2']);
   const [guessInput, setGuessInput] = useState('');
   const [p1done, setP1done] = useState(false);
   const [p2done, setP2done] = useState(false);
   const [roundWinner, setRoundWinner] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [hintMode, setHintMode] = useState('ai'); // for human mode: 'ai' | 'manual'
+  const [hintMode, setHintMode] = useState('ai');
   const [roundNum, setRoundNum] = useState(1);
 
   const pointsForHint = (h) => Math.max(1, 5 - h);
@@ -1303,7 +1270,6 @@ function DestinoGame({ numPlayers, onBack }) {
       setPhase(P.GUESSED);
       return;
     }
-    // Wrong guess - mark done and advance
     if (currentPlayer === 0) { setP1done(true); setCurrentPlayer(1); }
     else { setP2done(true); advanceHint(); }
     setGuessInput('');
@@ -1322,16 +1288,6 @@ function DestinoGame({ numPlayers, onBack }) {
 
   const nextRound = () => { setRoundNum(r => r + 1); setPhase(P.MODE); setRoundWinner(null); setHints([]); setSecretWord(''); setWordInput(''); setCustomHints(['','','','','']); };
 
-  const waitScreen = (msg) => e('div', { style: sh.gameRoot },
-    e('div', { style: { ...sh.bg, background: roseBg } }),
-    e(Screen, null,
-      e('div', { style: { ...sh.wordBox, background: '#0f060a', borderColor: '#3a0a1a', flexDirection: 'column', gap: 12, padding: '40px 28px' } },
-        e('span', { style: { fontSize: 36 } }, '💌'),
-        e('p', { style: { color: '#c06080', fontSize: 13, textAlign: 'center', lineHeight: '1.7' } }, msg)
-      )
-    )
-  );
-
   if (phase === P.MODE) return e('div', { style: sh.gameRoot },
     e('div', { style: { ...sh.bg, background: roseBg } }),
     e(Screen, null,
@@ -1341,13 +1297,13 @@ function DestinoGame({ numPlayers, onBack }) {
       e('div', { style: { ...sh.modeGrid, width: '100%' } },
         e('button', { style: sh.modeCard, onClick: () => setGameMode('ai') },
           e('span', { style: sh.modeEmoji }, '🤖'),
-          e('span', { style: sh.modeName }, 'IA Generativa'),
-          e('span', { style: sh.modeDesc }, 'A IA sorteia uma palavra e cria 5 dicas automáticas')
+          e('span', { style: sh.modeName }, 'IA Generativa (Modo Rápido)'),
+          e('span', { style: sh.modeDesc }, 'O sistema sorteia a palavra e cria as dicas automaticamente')
         ),
         e('button', { style: sh.modeCard, onClick: () => setGameMode('human') },
           e('span', { style: sh.modeEmoji }, '✍️'),
           e('span', { style: sh.modeName }, 'Criador Humano'),
-          e('span', { style: sh.modeDesc }, 'Um jogador inventa a palavra secreta e escolhe as dicas')
+          e('span', { style: sh.modeDesc }, 'Um jogador inventa a palavra e escolhe as dicas')
         )
       ),
       e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '0 4px' } },
@@ -1359,27 +1315,7 @@ function DestinoGame({ numPlayers, onBack }) {
     )
   );
 
-  if (gameMode === 'ai' && phase === P.MODE) return null; // handled above
-
-  if (gameMode === 'ai' && phase !== P.MODE) {
-    // Handled in the SETUP below after mode selection triggers
-  }
-
   if (gameMode === 'ai' && !loading && hints.length === 0 && phase === P.MODE) return e('div', { style: sh.gameRoot },
-    e('div', { style: { ...sh.bg, background: roseBg } }),
-    e(Screen, null,
-      e('p', { style: sh.eyebrow }, 'Tema'),
-      e('div', { style: { width: '100%', display: 'flex', flexDirection: 'column', gap: 10 } },
-        ...DESTINO_TEMAS.map(t => e('button', { key: t, onClick: () => setSelectedTheme(t),
-          style: { padding: '12px 16px', border: selectedTheme === t ? '1px solid #e06080' : '1px solid #1e1e1e',
-            background: selectedTheme === t ? '#1a060e' : '#111', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit',
-            color: selectedTheme === t ? '#f0a0b8' : '#666', fontSize: 13, textAlign: 'left' } }, t))
-      ),
-      e(Btn, { onClick: startAIMode, style: { background: '#e06080', color: '#fff' } }, 'Gerar palavra →')
-    )
-  );
-
-  if (phase === P.MODE && gameMode === 'ai') return e('div', { style: sh.gameRoot },
     e('div', { style: { ...sh.bg, background: roseBg } }),
     e(Screen, null,
       e('button', { style: sh.backBtn, onClick: () => setGameMode(null) }, '← Voltar'),
@@ -1433,8 +1369,6 @@ function DestinoGame({ numPlayers, onBack }) {
   );
 
   if (phase === P.PLAYING) {
-    const isP1Turn = currentPlayer === 0 && !p1done;
-    const isP2Turn = currentPlayer === 1 && !p2done;
     const hint = hints[currentHint] || '...';
     const myTurn = !p1done && currentPlayer === 0 || !p2done && currentPlayer === 1;
     return e('div', { style: sh.gameRoot },
@@ -1511,117 +1445,6 @@ const GAMES = [
   { id: 'destino',  name: 'O Próximo Destino', dot: '.', dotColor: '#e06080', nameColor: '#f0a0b8', emoji: '💌', desc: 'Jogo assíncrono para casais — descubra a palavra com menos dicas possível!', tags: ['casal', 'assíncrono'] },
 ];
 
-function Hub() {
-  const [screen, setScreen] = useState('hub');
-  const [selectedGame, setSelectedGame] = useState(null);
-  const [numPlayers, setNumPlayers] = useState(null);
-  const [inputVal, setInputVal] = useState('');
-
-  const selectGame = (g) => { setSelectedGame(g); setNumPlayers(null); setInputVal(''); setScreen('players'); };
-  const goHub = () => { setScreen('hub'); setSelectedGame(null); setNumPlayers(null); setInputVal(''); };
-
-  const handleInputChange = (v) => {
-    const n = v.replace(/\D/g, '');
-    setInputVal(n);
-    setNumPlayers(null);
-  };
-
-  const handleConfirm = () => {
-    const n = parseInt(inputVal, 10);
-    if (!n || n < 2) return;
-    setNumPlayers(n);
-    setScreen(selectedGame.id);
-  };
-
-  const e = React.createElement;
-
-  if (screen === 'impostor'  && numPlayers) return e(ImpostorGame,  { numPlayers, onBack: goHub });
-  if (screen === 'age'       && numPlayers) return e(AgeGame,       { numPlayers, onBack: goHub });
-  if (screen === 'score'     && numPlayers) return e(ScoreGame,     { numPlayers, onBack: goHub });
-  if (screen === 'mimica'    && numPlayers) return e(MimicaGame,    { numPlayers, onBack: goHub });
-  if (screen === 'quemsoueu' && numPlayers) return e(QuemSouEuGame, { numPlayers, onBack: goHub });
-  if (screen === 'destino'   && numPlayers) return e(DestinoGame,   { numPlayers, onBack: goHub });
-
-  if (screen === 'hub') return e('div', { style: sh.hubRoot },
-    e('div', { style: sh.hubBg }),
-    e('div', { style: sh.hubScreen },
-      e('div', { style: sh.hubHeader },
-        e('div', { style: sh.hubLogo },
-          e('span', { style: sh.hubLogoText }, 'jogos'),
-          e('span', { style: sh.hubLogoDot }, '.')
-        ),
-        e('p', { style: sh.hubSubtitle }, 'Escolha um jogo para começar')
-      ),
-      e('div', { style: sh.gameGrid },
-        ...GAMES.map(g =>
-          e('button', { key: g.id, style: sh.gameCard, onClick: () => selectGame(g) },
-            e('div', { style: sh.gameCardTop },
-              e('span', { style: sh.gameCardEmoji }, g.emoji),
-              e('div', { style: sh.gameCardTags },
-                ...g.tags.map(t => e('span', { key: t, style: sh.gameTag }, t))
-              )
-            ),
-            e('div', { style: sh.gameCardTitle },
-              e('span', { style: { ...sh.gameCardName, color: g.nameColor } }, g.name),
-              e('span', { style: { ...sh.gameCardDot, color: g.dotColor } }, g.dot)
-            ),
-            e('p', { style: sh.gameCardDesc }, g.desc),
-            e('div', { style: sh.gameCardFooter },
-              e('span', { style: sh.gameCardPlayers }, 'qualquer número de jogadores'),
-              e('span', { style: sh.gameCardArrow }, '→')
-            )
-          )
-        ),
-        e('div', { style: sh.gameCardEmpty },
-          e('span', { style: sh.gameCardEmptyPlus }, '+'),
-          e('span', { style: sh.gameCardEmptyText }, 'Em breve')
-        )
-      )
-    )
-  );
-
-  if (screen === 'players' && selectedGame) {
-    const n = parseInt(inputVal, 10);
-    const valid = n >= 2;
-    return e('div', { style: sh.hubRoot },
-      e('div', { style: sh.hubBg }),
-      e('div', { style: { ...sh.hubScreen, gap: 20 } },
-        e('button', { style: sh.backBtn, onClick: goHub }, '← Hub'),
-        e('span', { style: { fontSize: 48 } }, selectedGame.emoji),
-        e('div', { style: sh.hubLogo },
-          e('span', { style: { ...sh.hubLogoText, fontSize: 'clamp(24px,6vw,34px)', color: selectedGame.nameColor } }, selectedGame.name),
-          e('span', { style: { ...sh.hubLogoDot, color: selectedGame.dotColor } }, selectedGame.dot)
-        ),
-        e('p', { style: sh.instruction }, 'Quantos jogadores vão jogar?'),
-        e('div', { style: { display: 'flex', gap: 10, width: '100%', alignItems: 'stretch' } },
-          e('input', {
-            type: 'number', min: 2, placeholder: 'Ex: 4',
-            value: inputVal,
-            onChange: ev => handleInputChange(ev.target.value),
-            style: {
-              flex: 1, background: '#111', border: '1px solid #222', borderRadius: 4,
-              color: '#e8e2d9', fontSize: 28, fontWeight: 300,
-              fontFamily: "'DM Serif Display',Georgia,serif",
-              padding: '16px 20px', outline: 'none', textAlign: 'center',
-              letterSpacing: -1,
-            }
-          }),
-          e('button', {
-            style: { ...sh.btn, width: 'auto', padding: '16px 28px', opacity: valid ? 1 : 0.35, flexShrink: 0 },
-            onClick: handleConfirm, disabled: !valid
-          }, 'Jogar →')
-        ),
-        !valid && inputVal.length > 0
-          ? e('p', { style: { color: '#5a2a2a', fontSize: 12, letterSpacing: '1px', margin: 0 } }, 'Mínimo de 2 jogadores')
-          : null
-      )
-    );
-  }
-
-  return null;
-}
-
-
 // ── FIREBASE CONFIG ────────────────────────────────────
 const firebaseConfig = {
   apiKey: "AIzaSyDh98vjJcuAHObZUGd6Y5F0RMc8i4GBRG8",
@@ -1633,10 +1456,11 @@ const firebaseConfig = {
   appId: "1:986639865085:web:312558109cd96a795b1a94"
 };
 
-// Firebase SDK loaded via CDN (added to <head>)
 let db = null;
 function initFirebase() {
-  firebase.initializeApp(firebaseConfig);
+  if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+  }
   db = firebase.database();
 }
 
@@ -1649,7 +1473,7 @@ function genCode() {
 
 // ── LOBBY / ONLINE WRAPPER ─────────────────────────────
 function OnlineHub() {
-  const [screen, setScreen] = useState('home'); // home | create | join | waiting | game
+  const [screen, setScreen] = useState('home'); 
   const [roomCode, setRoomCode] = useState('');
   const [inputCode, setInputCode] = useState('');
   const [playerName, setPlayerName] = useState('');
@@ -1666,13 +1490,12 @@ function OnlineHub() {
   const e = React.createElement;
 
   useEffect(() => {
-    if (!db) initFirebase();
+    initFirebase();
   }, []);
 
-  // Listen to room changes
   useEffect(() => {
     if (!roomCode || screen === 'home' || screen === 'create' || screen === 'join') return;
-    const ref = firebase.database().ref('rooms/' + roomCode);
+    const ref = db.ref('rooms/' + roomCode);
     roomRef.current = ref;
     const unsub = ref.on('value', snap => {
       const data = snap.val();
@@ -1684,7 +1507,6 @@ function OnlineHub() {
     return () => ref.off('value', unsub);
   }, [roomCode, screen]);
 
-  // Cleanup on leave
   useEffect(() => {
     return () => {
       if (myRef.current) myRef.current.remove();
@@ -1696,9 +1518,9 @@ function OnlineHub() {
     const code = genCode();
     const id = 'p_' + Date.now();
     const player = { name: nameInput.trim(), host: true, joined: Date.now() };
-    await firebase.database().ref('rooms/' + code + '/players/' + id).set(player);
-    await firebase.database().ref('rooms/' + code + '/status').set('waiting');
-    myRef.current = firebase.database().ref('rooms/' + code + '/players/' + id);
+    await db.ref('rooms/' + code + '/players/' + id).set(player);
+    await db.ref('rooms/' + code + '/status').set('waiting');
+    myRef.current = db.ref('rooms/' + code + '/players/' + id);
     setRoomCode(code);
     setPlayerName(nameInput.trim());
     setMyId(id);
@@ -1710,12 +1532,12 @@ function OnlineHub() {
     if (!nameInput.trim()) { setError('Digite seu nome'); return; }
     if (!inputCode.trim()) { setError('Digite o código da sala'); return; }
     const code = inputCode.trim().toUpperCase();
-    const snap = await firebase.database().ref('rooms/' + code).once('value');
+    const snap = await db.ref('rooms/' + code).once('value');
     if (!snap.exists()) { setError('Sala não encontrada'); return; }
     const id = 'p_' + Date.now();
     const player = { name: nameInput.trim(), host: false, joined: Date.now() };
-    await firebase.database().ref('rooms/' + code + '/players/' + id).set(player);
-    myRef.current = firebase.database().ref('rooms/' + code + '/players/' + id);
+    await db.ref('rooms/' + code + '/players/' + id).set(player);
+    myRef.current = db.ref('rooms/' + code + '/players/' + id);
     setRoomCode(code);
     setPlayerName(nameInput.trim());
     setMyId(id);
@@ -1724,15 +1546,13 @@ function OnlineHub() {
   };
 
   const startOnlineGame = async (gameId) => {
-    // Host picks a game and writes it to Firebase — all clients navigate
-    await firebase.database().ref('rooms/' + roomCode + '/gameState').set({
+    await db.ref('rooms/' + roomCode + '/gameState').set({
       game: gameId,
       startedAt: Date.now(),
       numPlayers: players.length,
     });
   };
 
-  // When gameState arrives, navigate to game (all clients)
   useEffect(() => {
     if (gameState && gameState.game && screen === 'waiting') {
       setSelectedGame(gameState.game);
@@ -1749,7 +1569,6 @@ function OnlineHub() {
     setScreen('home');
   };
 
-  // ── HOME ──
   if (screen === 'home') return e('div', { style: sh.hubRoot },
     e('div', { style: sh.hubBg }),
     e('div', { style: { ...sh.hubScreen, gap: 28 } },
@@ -1779,10 +1598,8 @@ function OnlineHub() {
     )
   );
 
-  // ── LOCAL MODE (original Hub) ──
   if (screen === 'local') return e(LocalHub, { onBack: () => setScreen('home') });
 
-  // ── CREATE ──
   if (screen === 'create') return e('div', { style: sh.hubRoot },
     e('div', { style: sh.hubBg }),
     e('div', { style: { ...sh.hubScreen, gap: 20 } },
@@ -1799,7 +1616,6 @@ function OnlineHub() {
     )
   );
 
-  // ── JOIN ──
   if (screen === 'join') return e('div', { style: sh.hubRoot },
     e('div', { style: sh.hubBg }),
     e('div', { style: { ...sh.hubScreen, gap: 20 } },
@@ -1821,7 +1637,6 @@ function OnlineHub() {
     )
   );
 
-  // ── WAITING ROOM ──
   if (screen === 'waiting') return e('div', { style: sh.hubRoot },
     e('div', { style: sh.hubBg }),
     e('div', { style: { ...sh.hubScreen, gap: 20 } },
@@ -1868,37 +1683,17 @@ function OnlineHub() {
     )
   );
 
-  // ── GAME (online: each player sees their own screen) ──
   if (screen === 'game' && selectedGame && numPlayers) {
-    // Find my index among sorted players
     const sorted = [...players].sort((a, b) => a.joined - b.joined);
     const myIndex = sorted.findIndex(p => p.id === myId);
     const onBack = leaveRoom;
 
-    if (selectedGame === 'impostor') return e(OnlineImpostorGame, { 
-      numPlayers, myIndex, myName: playerName, players: sorted,
-      roomCode, isHost, db, myId, onBack 
-    });
-    if (selectedGame === 'age') return e(OnlineAgeGame, { 
-      numPlayers, myIndex, myName: playerName, players: sorted,
-      roomCode, isHost, db, onBack 
-    });
-    if (selectedGame === 'score') return e(OnlineScoreGame, { 
-      numPlayers, myIndex, myName: playerName, players: sorted,
-      roomCode, isHost, db, myId, onBack 
-    });
-    if (selectedGame === 'mimica') return e(OnlineMimicaGame, {
-      numPlayers, myIndex, myName: playerName, players: sorted,
-      roomCode, isHost, onBack
-    });
-    if (selectedGame === 'quemsoueu') return e(OnlineQuemSouEuGame, {
-      numPlayers, myIndex, myName: playerName, players: sorted,
-      roomCode, isHost, onBack
-    });
-    if (selectedGame === 'destino') return e(OnlineDestinoGame, {
-      numPlayers, myIndex, myName: playerName, players: sorted,
-      roomCode, isHost, onBack
-    });
+    if (selectedGame === 'impostor') return e(OnlineImpostorGame, { numPlayers, myIndex, myName: playerName, players: sorted, roomCode, isHost, db, myId, onBack });
+    if (selectedGame === 'age') return e(OnlineAgeGame, { numPlayers, myIndex, myName: playerName, players: sorted, roomCode, isHost, db, onBack });
+    if (selectedGame === 'score') return e(OnlineScoreGame, { numPlayers, myIndex, myName: playerName, players: sorted, roomCode, isHost, db, myId, onBack });
+    if (selectedGame === 'mimica') return e(OnlineMimicaGame, { numPlayers, myIndex, myName: playerName, players: sorted, roomCode, isHost, onBack });
+    if (selectedGame === 'quemsoueu') return e(OnlineQuemSouEuGame, { numPlayers, myIndex, myName: playerName, players: sorted, roomCode, isHost, onBack });
+    if (selectedGame === 'destino') return e(OnlineDestinoGame, { numPlayers, myIndex, myName: playerName, players: sorted, roomCode, isHost, onBack });
   }
 
   return null;
@@ -1913,7 +1708,7 @@ const errorStyle = { color: '#e05555', fontSize: 12, letterSpacing: '1px', margi
 
 // ── ONLINE IMPOSTOR ────────────────────────────────────
 function OnlineImpostorGame({ numPlayers, myIndex, myName, players, roomCode, isHost, db, myId, onBack }) {
-  const [phase, setPhase] = useState('idle'); // idle | mode | category | shown | done
+  const [phase, setPhase] = useState('idle');
   const [mode, setMode] = useState(null);
   const [myWord, setMyWord] = useState(null);
   const [category, setCategory] = useState(null);
@@ -1927,9 +1722,8 @@ function OnlineImpostorGame({ numPlayers, myIndex, myName, players, roomCode, is
   const usedRef = useRef([]);
   const e = React.createElement;
 
-  // Listen for game updates from host
   useEffect(() => {
-    const ref = firebase.database().ref('rooms/' + roomCode + '/currentRound');
+    const ref = db.ref('rooms/' + roomCode + '/currentRound');
     ref.on('value', snap => {
       const data = snap.val();
       if (!data) return;
@@ -1937,7 +1731,6 @@ function OnlineImpostorGame({ numPlayers, myIndex, myName, players, roomCode, is
       setHint(data.hint);
       setSpeakerIdx(data.speakerIdx);
       setRoundNum(r => r + 1);
-      // Each player reads their own word
       const myWord = data.words ? data.words[myIndex] : null;
       setMyWord(myWord);
       setIsImpostor(myWord === '__IMPOSTOR__');
@@ -1947,7 +1740,6 @@ function OnlineImpostorGame({ numPlayers, myIndex, myName, players, roomCode, is
   }, [roomCode, myIndex]);
 
   const hostStartRound = async (m) => {
-    // Host generates and pushes round data
     const entry = deckRef.current.length > 0 ? deckRef.current.shift() : BASE_PAIRS[Math.floor(Math.random() * BASE_PAIRS.length)];
     usedRef.current.push(entry);
     const [a, b] = entry.words;
@@ -1957,7 +1749,7 @@ function OnlineImpostorGame({ numPlayers, myIndex, myName, players, roomCode, is
     const words = Array(numPlayers).fill(majority);
     if (m === 'classic') words[impostorIdx] = minority;
     else words[impostorIdx] = '__IMPOSTOR__';
-    await firebase.database().ref('rooms/' + roomCode + '/currentRound').set({
+    await db.ref('rooms/' + roomCode + '/currentRound').set({
       category: entry.category, hint: entry.hint, words, speakerIdx: spIdx, mode: m
     });
     setMode(m);
@@ -2068,14 +1860,14 @@ function OnlineImpostorGame({ numPlayers, myIndex, myName, players, roomCode, is
 
 // ── ONLINE IDADE ───────────────────────────────────────
 function OnlineAgeGame({ numPlayers, myIndex, myName, players, roomCode, isHost, db, onBack }) {
-  const [phase, setPhase] = useState('idle'); // idle | shown | done
+  const [phase, setPhase] = useState('idle');
   const [myAge, setMyAge] = useState(null);
   const [countdown, setCountdown] = useState(null);
   const e = React.createElement;
   const blueBg = 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(100,160,232,0.06) 0%, transparent 70%)';
 
   useEffect(() => {
-    const ref = firebase.database().ref('rooms/' + roomCode + '/ageRound');
+    const ref = db.ref('rooms/' + roomCode + '/ageRound');
     ref.on('value', snap => {
       const data = snap.val();
       if (!data || !data.ages) return;
@@ -2091,7 +1883,7 @@ function OnlineAgeGame({ numPlayers, myIndex, myName, players, roomCode, isHost,
       const age = Math.floor(Math.random() * 95) + 5;
       if (!pool.includes(age)) pool.push(age);
     }
-    await firebase.database().ref('rooms/' + roomCode + '/ageRound').set({ ages: pool, startedAt: Date.now() });
+    await db.ref('rooms/' + roomCode + '/ageRound').set({ ages: pool, startedAt: Date.now() });
   };
 
   const showMyAge = () => { setCountdown(4); setPhase('shown'); };
@@ -2160,14 +1952,14 @@ function OnlineAgeGame({ numPlayers, myIndex, myName, players, roomCode, isHost,
 
 // ── ONLINE NOTAS ───────────────────────────────────────
 function OnlineScoreGame({ numPlayers, myIndex, myName, players, roomCode, isHost, db, myId, onBack }) {
-  const [phase, setPhase] = useState('idle'); // idle | spin | done
+  const [phase, setPhase] = useState('idle');
   const [myScore, setMyScore] = useState(null);
   const [allScores, setAllScores] = useState(null);
   const greenBg = 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(80,180,80,0.05) 0%, transparent 70%)';
   const e = React.createElement;
 
   useEffect(() => {
-    const ref = firebase.database().ref('rooms/' + roomCode + '/scoreRound');
+    const ref = db.ref('rooms/' + roomCode + '/scoreRound');
     ref.on('value', snap => {
       const data = snap.val();
       if (!data) return;
@@ -2178,15 +1970,14 @@ function OnlineScoreGame({ numPlayers, myIndex, myName, players, roomCode, isHos
   }, [roomCode]);
 
   const hostStart = async () => {
-    await firebase.database().ref('rooms/' + roomCode + '/scoreRound').set({ started: true, scores: null });
+    await db.ref('rooms/' + roomCode + '/scoreRound').set({ started: true, scores: null });
   };
 
   const handleSpinDone = async (score) => {
     setMyScore(score);
-    await firebase.database().ref('rooms/' + roomCode + '/scoreRound/scores/' + myIndex).set(score);
+    await db.ref('rooms/' + roomCode + '/scoreRound/scores/' + myIndex).set(score);
   };
 
-  // Check if all scores submitted → show results
   useEffect(() => {
     if (!allScores) return;
     const vals = Object.values(allScores);
@@ -2255,11 +2046,10 @@ function OnlineScoreGame({ numPlayers, myIndex, myName, players, roomCode, isHos
 }
 
 // ── ONLINE MÍMICA ──────────────────────────────────────
-// Simplified online mímica: host generates words, players take turns as mimico
 function OnlineMimicaGame({ numPlayers, myIndex, myName, players, roomCode, isHost, onBack }) {
   const e = React.createElement;
   const orangeBg = 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(224,112,64,0.07) 0%, transparent 70%)';
-  const [state, setState] = useState(null); // Firebase state
+  const [state, setState] = useState(null);
   const [localCountdown, setLocalCountdown] = useState(null);
   const [loading, setLoading] = useState(false);
   const timerRef = useRef(null);
@@ -2281,7 +2071,7 @@ function OnlineMimicaGame({ numPlayers, myIndex, myName, players, roomCode, isHo
         mimicoIdx, teamIdx, scores: state?.scores || [0, 0],
         hits: 0, roundTime: 60, startedAt: Date.now()
       });
-    } catch(ex) {}
+    } catch(ex) { setLoading(false); }
     setLoading(false);
   };
 
@@ -2369,7 +2159,7 @@ function OnlineMimicaGame({ numPlayers, myIndex, myName, players, roomCode, isHo
     e('div', { style: { ...sh.bg, background: orangeBg } }),
     e(Screen, null,
       e('p', { style: sh.eyebrow }, 'Fim da rodada'),
-      e('div', { style: { ...sh.wordBox, background: '#1a0a00', borderColor: '#3a1a08', flexDirection: 'column', gap: 8 } },
+      e('div', { style: { ...sh.wordBox, background: '#1a0a00', borderColor: '#3a1a08', flexDirection: 'column', gap: 4 } },
         e('p', { style: { color: '#a06040', fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase' } }, 'Acertos do ' + teamNames[state.teamIdx]),
         e('p', { style: { color: '#f0b090', fontSize: 56, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif", letterSpacing: -2 } }, state.hits || 0)
       ),
@@ -2430,7 +2220,7 @@ function OnlineQuemSouEuGame({ numPlayers, myIndex, myName, players, roomCode, i
       await firebase.database().ref('rooms/' + roomCode + '/quemState').set({
         phase: 'playing', identities: ids, activePlayer: 0, eliminated: []
       });
-    } catch(ex) {}
+    } catch(ex) { setLoading(false); }
     setLoading(false);
   };
 
@@ -2465,7 +2255,6 @@ function OnlineQuemSouEuGame({ numPlayers, myIndex, myName, players, roomCode, i
   const myIdentity = state?.identities?.[myIndex];
   const isActive = state && state.activePlayer === myIndex;
   const amEliminated = state && (state.eliminated || []).includes(myIndex);
-  // In online mode: each player sees OTHERS' identities but not their own
   const othersView = state?.identities
     ? state.identities.map((id, i) => ({ name: players[i]?.name || playerLabel(i), identity: id, isSelf: i === myIndex }))
     : [];
@@ -2486,7 +2275,6 @@ function OnlineQuemSouEuGame({ numPlayers, myIndex, myName, players, roomCode, i
     return e('div', { style: sh.gameRoot },
       e('div', { style: { ...sh.bg, background: purpleBg } }),
       e(Screen, null,
-        // Show others' identities (not mine)
         e('div', { style: { ...sh.ruleCard, gap: 0, padding: 0, overflow: 'hidden', width: '100%', marginBottom: 8 } },
           e('div', { style: { padding: '10px 16px', borderBottom: '1px solid #1a1a1a' } },
             e('span', { style: { color: '#6a408a', fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase' } }, 'Identidades dos outros')
@@ -2498,12 +2286,10 @@ function OnlineQuemSouEuGame({ numPlayers, myIndex, myName, players, roomCode, i
               : e('span', { style: { color: '#e8e2d9', fontSize: 13 } }, row.identity)
           ))
         ),
-        // Turn indicator
         e('div', { style: { ...sh.speakerBox, background: '#110a1a', borderColor: '#2a1a4a', width: '100%' } },
           e('p', { style: { ...sh.speakerEyebrow, color: '#6a408a' } }, isActive ? 'Sua vez!' : 'Vez de jogar'),
           e('p', { style: { ...sh.speakerName, color: '#d0b0f0' } }, players[state.activePlayer]?.name || playerLabel(state.activePlayer))
         ),
-        // Controls for active player
         isActive && !state.guessing
           ? e('div', { style: { display: 'flex', gap: 10, width: '100%' } },
               e(Btn, { ghost: true, onClick: advanceTurn, style: { flex: 1 } }, '✗ Passar vez'),
@@ -2571,7 +2357,7 @@ function OnlineDestinoGame({ numPlayers, myIndex, myName, players, roomCode, isH
         currentPlayer: 0, scores: Array(numPlayers).fill(0),
         guesses: {}, theme: themeInput
       });
-    } catch(ex) {}
+    } catch(ex) { setLoading(false); }
     setLoading(false);
   };
 
@@ -2586,7 +2372,6 @@ function OnlineDestinoGame({ numPlayers, myIndex, myName, players, roomCode, isH
         phase: 'guessed', winner: myIndex, pointsWon: pts, scores: newScores
       });
     } else {
-      // wrong: advance turn
       const nextPlayer = (state.currentPlayer + 1) % numPlayers;
       const newHint = nextPlayer === 0 ? Math.min(state.currentHint + 1, 4) : state.currentHint;
       const noMoreHints = newHint >= 4 && nextPlayer === 0 && state.currentHint >= 4;
