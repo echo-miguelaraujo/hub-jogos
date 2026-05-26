@@ -1533,9 +1533,12 @@ function Hub() {
 
   const e = React.createElement;
 
-  if (screen === 'impostor' && numPlayers) return e(ImpostorGame, { numPlayers, onBack: goHub });
-  if (screen === 'age'      && numPlayers) return e(AgeGame,      { numPlayers, onBack: goHub });
-  if (screen === 'score'    && numPlayers) return e(ScoreGame,    { numPlayers, onBack: goHub });
+  if (screen === 'impostor'  && numPlayers) return e(ImpostorGame,  { numPlayers, onBack: goHub });
+  if (screen === 'age'       && numPlayers) return e(AgeGame,       { numPlayers, onBack: goHub });
+  if (screen === 'score'     && numPlayers) return e(ScoreGame,     { numPlayers, onBack: goHub });
+  if (screen === 'mimica'    && numPlayers) return e(MimicaGame,    { numPlayers, onBack: goHub });
+  if (screen === 'quemsoueu' && numPlayers) return e(QuemSouEuGame, { numPlayers, onBack: goHub });
+  if (screen === 'destino'   && numPlayers) return e(DestinoGame,   { numPlayers, onBack: goHub });
 
   if (screen === 'hub') return e('div', { style: sh.hubRoot },
     e('div', { style: sh.hubBg }),
@@ -1881,6 +1884,18 @@ function OnlineHub() {
     if (selectedGame === 'score') return e(OnlineScoreGame, { 
       numPlayers, myIndex, myName: playerName, players: sorted,
       roomCode, isHost, db, myId, onBack 
+    });
+    if (selectedGame === 'mimica') return e(OnlineMimicaGame, {
+      numPlayers, myIndex, myName: playerName, players: sorted,
+      roomCode, isHost, onBack
+    });
+    if (selectedGame === 'quemsoueu') return e(OnlineQuemSouEuGame, {
+      numPlayers, myIndex, myName: playerName, players: sorted,
+      roomCode, isHost, onBack
+    });
+    if (selectedGame === 'destino') return e(OnlineDestinoGame, {
+      numPlayers, myIndex, myName: playerName, players: sorted,
+      roomCode, isHost, onBack
     });
   }
 
@@ -2237,6 +2252,453 @@ function OnlineScoreGame({ numPlayers, myIndex, myName, players, roomCode, isHos
   return null;
 }
 
+// ── ONLINE MÍMICA ──────────────────────────────────────
+// Simplified online mímica: host generates words, players take turns as mimico
+function OnlineMimicaGame({ numPlayers, myIndex, myName, players, roomCode, isHost, onBack }) {
+  const e = React.createElement;
+  const orangeBg = 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(224,112,64,0.07) 0%, transparent 70%)';
+  const [state, setState] = useState(null); // Firebase state
+  const [localCountdown, setLocalCountdown] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    const ref = firebase.database().ref('rooms/' + roomCode + '/mimicaState');
+    ref.on('value', snap => { const v = snap.val(); if (v) setState(v); });
+    return () => ref.off();
+  }, [roomCode]);
+
+  const startRound = async () => {
+    setLoading(true);
+    try {
+      const words = await generateMimicaWords(['Filmes','Cultura Pop','Animais','Ações Absurdas'], []);
+      const mimicoIdx = (state ? (state.mimicoIdx + 1) % numPlayers : 0);
+      const teamIdx = mimicoIdx % 2;
+      await firebase.database().ref('rooms/' + roomCode + '/mimicaState').set({
+        phase: 'countdown', words: words.slice(0, 15), wordIdx: 0,
+        mimicoIdx, teamIdx, scores: state?.scores || [0, 0],
+        hits: 0, roundTime: 60, startedAt: Date.now()
+      });
+    } catch(ex) {}
+    setLoading(false);
+  };
+
+  const markHit = async () => {
+    if (!state) return;
+    const nextIdx = state.wordIdx + 1;
+    const newHits = (state.hits || 0) + 1;
+    if (nextIdx >= (state.words || []).length) {
+      await firebase.database().ref('rooms/' + roomCode + '/mimicaState').update({ phase: 'roundend', hits: newHits });
+    } else {
+      await firebase.database().ref('rooms/' + roomCode + '/mimicaState').update({ wordIdx: nextIdx, hits: newHits });
+    }
+  };
+
+  const endRound = async () => {
+    if (!state) return;
+    const newScores = [...(state.scores || [0,0])];
+    newScores[state.teamIdx] = (newScores[state.teamIdx] || 0) + (state.hits || 0);
+    await firebase.database().ref('rooms/' + roomCode + '/mimicaState').update({ phase: 'roundend', scores: newScores });
+  };
+
+  const nextRound = async () => {
+    const newScores = state?.scores || [0,0];
+    const winner = newScores[0] >= 10 || newScores[1] >= 10;
+    if (winner) {
+      await firebase.database().ref('rooms/' + roomCode + '/mimicaState').update({ phase: 'gameover' });
+    } else {
+      await firebase.database().ref('rooms/' + roomCode + '/mimicaState').update({ phase: 'idle' });
+    }
+  };
+
+  const isMimico = state && state.mimicoIdx === myIndex;
+  const teamColors = ['#e07040','#4a9fd4'];
+  const teamNames = ['Time A', 'Time B'];
+
+  if (!state || state.phase === 'idle') return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: orangeBg } }),
+    e(Screen, null,
+      e('div', { style: sh.gameHeader }, e('button', { style: sh.backBtn, onClick: onBack }, '← Sair')),
+      e(Tag, { color: '#e07040' }, myName),
+      state?.scores ? e('div', { style: { display: 'flex', gap: 32, alignItems: 'center' } },
+        ...( state.scores.map((s,ti) => e('div', { key: ti, style: { textAlign: 'center' } },
+          e('p', { style: { color: teamColors[ti], fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 2 } }, teamNames[ti]),
+          e('p', { style: { color: '#e8e2d9', fontSize: 28, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, s + ' pts')
+        )))
+      ) : null,
+      isHost
+        ? e(Btn, { onClick: startRound, disabled: loading, style: { background: '#e07040', color: '#0f0f0f' } }, loading ? 'Gerando...' : 'Iniciar rodada')
+        : e('p', { style: sh.instruction }, 'Aguardando o host iniciar a rodada...')
+    )
+  );
+
+  if (state.phase === 'countdown' || state.phase === 'playing') {
+    const word = (state.words || [])[state.wordIdx] || '';
+    const elapsed = Math.floor((Date.now() - (state.startedAt || Date.now())) / 1000);
+    const remaining = Math.max(0, (state.roundTime || 60) - elapsed);
+    if (remaining <= 0 && state.phase !== 'roundend' && isHost) endRound();
+
+    return e('div', { style: sh.gameRoot },
+      e('div', { style: { ...sh.bg, background: orangeBg } }),
+      e(Screen, null,
+        e(Tag, { color: teamColors[state.teamIdx] }, teamNames[state.teamIdx] + ' — ' + (players[state.mimicoIdx]?.name || 'Mímico')),
+        isMimico
+          ? e('div', { style: { display: 'flex', flexDirection: 'column', gap: 16, width: '100%', alignItems: 'center' } },
+              e('div', { style: { ...sh.wordBox, background: '#1a0a00', borderColor: '#3a1a08' } },
+                e('span', { style: { ...sh.wordText, color: '#f0b090' } }, word)
+              ),
+              e('p', { style: { color: '#555', fontSize: 13, textAlign: 'center' } }, 'Faça a mímica! Não fale a palavra.'),
+              e(Btn, { onClick: markHit, style: { background: '#e07040', color: '#0f0f0f' } }, '✓ Acertaram! Próxima'),
+              e(Btn, { ghost: true, onClick: endRound }, 'Encerrar rodada')
+            )
+          : state.mimicoIdx === myIndex
+            ? null
+            : e('div', { style: { display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' } },
+                state.teamIdx === myIndex % 2
+                  ? e('p', { style: { color: '#f0b090', fontSize: 18, textAlign: 'center', fontWeight: 500 } }, '🎯 Adivinhem a mímica!')
+                  : e('p', { style: { color: '#555', fontSize: 16, textAlign: 'center' } }, '👀 Observando...'),
+                e('p', { style: { color: '#444', fontSize: 13 } }, 'Acertos: ' + (state.hits || 0))
+              )
+      )
+    );
+  }
+
+  if (state.phase === 'roundend') return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: orangeBg } }),
+    e(Screen, null,
+      e('p', { style: sh.eyebrow }, 'Fim da rodada'),
+      e('div', { style: { ...sh.wordBox, background: '#1a0a00', borderColor: '#3a1a08', flexDirection: 'column', gap: 8 } },
+        e('p', { style: { color: '#a06040', fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase' } }, 'Acertos do ' + teamNames[state.teamIdx]),
+        e('p', { style: { color: '#f0b090', fontSize: 56, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif", letterSpacing: -2 } }, state.hits || 0)
+      ),
+      e('div', { style: { display: 'flex', gap: 32, alignItems: 'center' } },
+        ...(state.scores || [0,0]).map((s,ti) => e('div', { key: ti, style: { textAlign: 'center' } },
+          e('p', { style: { color: teamColors[ti], fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 2 } }, teamNames[ti]),
+          e('p', { style: { color: '#e8e2d9', fontSize: 28, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, s + ' pts')
+        ))
+      ),
+      isHost ? e(Btn, { onClick: nextRound, style: { background: '#e07040', color: '#0f0f0f' } }, 'Próxima rodada →') : e('p', { style: sh.instruction }, 'Aguardando próxima rodada...')
+    )
+  );
+
+  if (state.phase === 'gameover') {
+    const sc = state.scores || [0,0];
+    const winner = sc[0] > sc[1] ? 0 : sc[1] > sc[0] ? 1 : -1;
+    return e('div', { style: sh.gameRoot },
+      e('div', { style: { ...sh.bg, background: orangeBg } }),
+      e(Screen, null,
+        e('div', { style: { ...sh.gameTitleSmall } }, 'mímica', e('span', { style: { ...sh.gameTitleDot, color: '#e07040' } }, '.')),
+        e('div', { style: { ...sh.wordBox, background: '#0f0a08', borderColor: '#3a1a08', flexDirection: 'column', gap: 8 } },
+          e('p', { style: { color: '#a06040', fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase' } }, winner >= 0 ? 'Campeão' : 'Empate!'),
+          winner >= 0 ? e('p', { style: { color: teamColors[winner], fontSize: 36, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, teamNames[winner]) : null
+        ),
+        e('div', { style: { display: 'flex', gap: 32 } },
+          ...sc.map((s,ti) => e('div', { key: ti, style: { textAlign: 'center' } },
+            e('p', { style: { color: teamColors[ti], fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 2 } }, teamNames[ti]),
+            e('p', { style: { color: '#e8e2d9', fontSize: 28, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, s + ' pts')
+          ))
+        ),
+        isHost ? e(Btn, { onClick: startRound, disabled: loading, style: { background: '#e07040', color: '#0f0f0f' } }, 'Jogar novamente') : null,
+        e(Btn, { ghost: true, onClick: onBack }, 'Sair da sala')
+      )
+    );
+  }
+
+  return null;
+}
+
+// ── ONLINE QUEM SOU EU ─────────────────────────────────
+function OnlineQuemSouEuGame({ numPlayers, myIndex, myName, players, roomCode, isHost, onBack }) {
+  const e = React.createElement;
+  const purpleBg = 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(160,112,224,0.07) 0%, transparent 70%)';
+  const [state, setState] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [guessInput, setGuessInput] = useState('');
+
+  useEffect(() => {
+    const ref = firebase.database().ref('rooms/' + roomCode + '/quemState');
+    ref.on('value', snap => { const v = snap.val(); if (v) setState(v); });
+    return () => ref.off();
+  }, [roomCode]);
+
+  const startGame = async () => {
+    setLoading(true);
+    try {
+      const ids = await generateIdentities(['Celebridades','Personagens de Desenho','Heróis e Vilões'], numPlayers, []);
+      await firebase.database().ref('rooms/' + roomCode + '/quemState').set({
+        phase: 'playing', identities: ids, activePlayer: 0, eliminated: []
+      });
+    } catch(ex) {}
+    setLoading(false);
+  };
+
+  const advanceTurn = async () => {
+    if (!state) return;
+    const remaining = players.map((_,i) => i).filter(i => !(state.eliminated || []).includes(i));
+    const pos = remaining.indexOf(state.activePlayer);
+    const next = remaining[(pos + 1) % remaining.length];
+    await firebase.database().ref('rooms/' + roomCode + '/quemState').update({ activePlayer: next, guessing: false });
+  };
+
+  const markCorrect = async () => {
+    if (!state) return;
+    const newElim = [...(state.eliminated || []), state.activePlayer];
+    if (newElim.length >= numPlayers) {
+      await firebase.database().ref('rooms/' + roomCode + '/quemState').update({ phase: 'end', eliminated: newElim });
+    } else {
+      const remaining = players.map((_,i) => i).filter(i => !newElim.includes(i));
+      await firebase.database().ref('rooms/' + roomCode + '/quemState').update({ eliminated: newElim, activePlayer: remaining[0], guessing: false });
+    }
+    setGuessInput('');
+  };
+
+  const startGuess = async () => {
+    await firebase.database().ref('rooms/' + roomCode + '/quemState').update({ guessing: true });
+  };
+
+  const cancelGuess = async () => {
+    await firebase.database().ref('rooms/' + roomCode + '/quemState').update({ guessing: false });
+  };
+
+  const myIdentity = state?.identities?.[myIndex];
+  const isActive = state && state.activePlayer === myIndex;
+  const amEliminated = state && (state.eliminated || []).includes(myIndex);
+  // In online mode: each player sees OTHERS' identities but not their own
+  const othersView = state?.identities
+    ? state.identities.map((id, i) => ({ name: players[i]?.name || playerLabel(i), identity: id, isSelf: i === myIndex }))
+    : [];
+
+  if (!state || state.phase === 'idle' || !state.phase) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: purpleBg } }),
+    e(Screen, null,
+      e('div', { style: sh.gameHeader }, e('button', { style: sh.backBtn, onClick: onBack }, '← Sair')),
+      e(Tag, { color: '#a070e0' }, myName),
+      isHost
+        ? e(Btn, { onClick: startGame, disabled: loading, style: { background: '#a070e0', color: '#fff' } }, loading ? 'Gerando...' : 'Gerar identidades')
+        : e('p', { style: sh.instruction }, 'Aguardando o host gerar as identidades...')
+    )
+  );
+
+  if (state.phase === 'playing' || state.phase === 'guessing') {
+    const remaining = players.map((_,i) => i).filter(i => !(state.eliminated || []).includes(i));
+    return e('div', { style: sh.gameRoot },
+      e('div', { style: { ...sh.bg, background: purpleBg } }),
+      e(Screen, null,
+        // Show others' identities (not mine)
+        e('div', { style: { ...sh.ruleCard, gap: 0, padding: 0, overflow: 'hidden', width: '100%', marginBottom: 8 } },
+          e('div', { style: { padding: '10px 16px', borderBottom: '1px solid #1a1a1a' } },
+            e('span', { style: { color: '#6a408a', fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase' } }, 'Identidades dos outros')
+          ),
+          ...othersView.map((row, i) => e('div', { key: i, style: { display: 'flex', gap: 12, padding: '10px 16px', borderBottom: i < othersView.length-1 ? '1px solid #111' : 'none', opacity: (state.eliminated||[]).includes(i) ? 0.3 : 1 } },
+            e('span', { style: { color: '#a070e0', fontSize: 12, minWidth: 72, flexShrink: 0 } }, row.name + (row.isSelf ? ' (você)' : '')),
+            row.isSelf
+              ? e('span', { style: { color: '#6a408a', fontSize: 12, fontStyle: 'italic' } }, '— oculta —')
+              : e('span', { style: { color: '#e8e2d9', fontSize: 13 } }, row.identity)
+          ))
+        ),
+        // Turn indicator
+        e('div', { style: { ...sh.speakerBox, background: '#110a1a', borderColor: '#2a1a4a', width: '100%' } },
+          e('p', { style: { ...sh.speakerEyebrow, color: '#6a408a' } }, isActive ? 'Sua vez!' : 'Vez de jogar'),
+          e('p', { style: { ...sh.speakerName, color: '#d0b0f0' } }, players[state.activePlayer]?.name || playerLabel(state.activePlayer))
+        ),
+        // Controls for active player
+        isActive && !state.guessing
+          ? e('div', { style: { display: 'flex', gap: 10, width: '100%' } },
+              e(Btn, { ghost: true, onClick: advanceTurn, style: { flex: 1 } }, '✗ Passar vez'),
+              e(Btn, { onClick: startGuess, style: { flex: 1, background: '#a070e0', color: '#fff' } }, '🎯 Dar palpite')
+            )
+          : state.guessing && isActive
+            ? e('div', { style: { width: '100%', display: 'flex', flexDirection: 'column', gap: 10 } },
+                e('p', { style: { color: '#555', fontSize: 13, textAlign: 'center' } }, 'Dê seu palpite em voz alta. O grupo valida:'),
+                e('div', { style: { display: 'flex', gap: 10 } },
+                  e('button', { onClick: cancelGuess, style: { flex: 1, padding: '14px', border: '1px solid #3a1a1a', background: '#1a0a0a', color: '#e05555', borderRadius: 4, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' } }, '✗ Errou'),
+                  e('button', { onClick: markCorrect, style: { flex: 1, padding: '14px', border: '1px solid #1a3a1a', background: '#0a1a0a', color: '#4ab84a', borderRadius: 4, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' } }, '✓ Acertou!')
+                )
+              )
+            : state.guessing
+              ? e('p', { style: sh.instruction }, players[state.activePlayer]?.name + ' está dando um palpite...')
+              : e('p', { style: sh.instruction }, 'Aguarde sua vez para perguntar')
+      )
+    );
+  }
+
+  if (state.phase === 'end') return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: purpleBg } }),
+    e(Screen, null,
+      e('div', { style: { ...sh.gameTitleSmall, justifyContent: 'center' } }, 'Quem Sou Eu', e('span', { style: { ...sh.gameTitleDot, color: '#a070e0' } }, '?')),
+      e('p', { style: sh.instruction }, 'Todos descobriram! 🎉'),
+      e('div', { style: { ...sh.ruleCard, gap: 0, padding: 0, overflow: 'hidden', width: '100%' } },
+        e('div', { style: { padding: '10px 16px', borderBottom: '1px solid #1a1a1a' } },
+          e('span', { style: { color: '#444', fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase' } }, 'Identidades reveladas')
+        ),
+        ...(state.identities || []).map((id, i) => e('div', { key: i, style: { display: 'flex', gap: 12, padding: '10px 16px', borderBottom: i < (state.identities.length-1) ? '1px solid #111' : 'none' } },
+          e('span', { style: { color: '#a070e0', fontSize: 12, minWidth: 80 } }, players[i]?.name || playerLabel(i)),
+          e('span', { style: { color: '#e8e2d9', fontSize: 13 } }, id)
+        ))
+      ),
+      isHost ? e(Btn, { onClick: startGame, disabled: loading, style: { background: '#a070e0', color: '#fff' } }, 'Nova rodada') : null,
+      e(Btn, { ghost: true, onClick: onBack }, 'Sair da sala')
+    )
+  );
+
+  return null;
+}
+
+// ── ONLINE PRÓXIMO DESTINO ─────────────────────────────
+function OnlineDestinoGame({ numPlayers, myIndex, myName, players, roomCode, isHost, onBack }) {
+  const e = React.createElement;
+  const roseBg = 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(224,96,128,0.07) 0%, transparent 70%)';
+  const [state, setState] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [guessInput, setGuessInput] = useState('');
+  const [themeInput, setThemeInput] = useState('Cidades do Mundo');
+
+  useEffect(() => {
+    const ref = firebase.database().ref('rooms/' + roomCode + '/destinoState');
+    ref.on('value', snap => { const v = snap.val(); if (v) setState(v); });
+    return () => ref.off();
+  }, [roomCode]);
+
+  const hostStartGame = async () => {
+    setLoading(true);
+    try {
+      const word = await generateDestinoWord(themeInput);
+      const hints = await generateDestinoHints(word, themeInput);
+      await firebase.database().ref('rooms/' + roomCode + '/destinoState').set({
+        phase: 'playing', word, hints, currentHint: 0,
+        currentPlayer: 0, scores: Array(numPlayers).fill(0),
+        guesses: {}, theme: themeInput
+      });
+    } catch(ex) {}
+    setLoading(false);
+  };
+
+  const submitGuess = async () => {
+    if (!guessInput.trim() || !state) return;
+    const correct = guessInput.trim().toLowerCase() === state.word.toLowerCase();
+    const pts = [5,4,3,2,1][state.currentHint] || 1;
+    if (correct) {
+      const newScores = [...(state.scores || [])];
+      newScores[myIndex] = (newScores[myIndex] || 0) + pts;
+      await firebase.database().ref('rooms/' + roomCode + '/destinoState').update({
+        phase: 'guessed', winner: myIndex, pointsWon: pts, scores: newScores
+      });
+    } else {
+      // wrong: advance turn
+      const nextPlayer = (state.currentPlayer + 1) % numPlayers;
+      const newHint = nextPlayer === 0 ? Math.min(state.currentHint + 1, 4) : state.currentHint;
+      const noMoreHints = newHint >= 4 && nextPlayer === 0 && state.currentHint >= 4;
+      await firebase.database().ref('rooms/' + roomCode + '/destinoState').update({
+        currentPlayer: nextPlayer,
+        currentHint: newHint,
+        phase: noMoreHints ? 'reveal' : 'playing'
+      });
+    }
+    setGuessInput('');
+  };
+
+  const passGuess = async () => {
+    if (!state) return;
+    const nextPlayer = (state.currentPlayer + 1) % numPlayers;
+    const newHint = nextPlayer === 0 ? Math.min(state.currentHint + 1, 4) : state.currentHint;
+    const noMoreHints = state.currentHint >= 4 && nextPlayer === 0;
+    await firebase.database().ref('rooms/' + roomCode + '/destinoState').update({
+      currentPlayer: nextPlayer,
+      currentHint: newHint,
+      phase: noMoreHints ? 'reveal' : 'playing'
+    });
+  };
+
+  const nextRound = async () => {
+    await firebase.database().ref('rooms/' + roomCode + '/destinoState').update({ phase: 'idle' });
+  };
+
+  const isMyTurn = state && state.currentPlayer === myIndex;
+
+  if (!state || state.phase === 'idle') return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: roseBg } }),
+    e(Screen, null,
+      e('div', { style: sh.gameHeader }, e('button', { style: sh.backBtn, onClick: onBack }, '← Sair')),
+      e(Tag, { color: '#e06080' }, myName),
+      state?.scores ? e('div', { style: { ...sh.ruleCard, gap: 0, padding: 0, overflow: 'hidden', width: '100%' } },
+        e('div', { style: { padding: '10px 16px', borderBottom: '1px solid #1a1a1a' } }, e('span', { style: { color: '#444', fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase' } }, 'Placar')),
+        ...(state.scores||[]).map((s,i) => e('div', { key: i, style: { display: 'flex', justifyContent: 'space-between', padding: '10px 16px', borderBottom: i < state.scores.length-1 ? '1px solid #111' : 'none' } },
+          e('span', { style: { color: '#e8e2d9', fontSize: 13 } }, players[i]?.name || playerLabel(i)),
+          e('span', { style: { color: '#f0a0b8', fontSize: 14, fontWeight: 600 } }, s + ' pts')
+        ))
+      ) : null,
+      isHost
+        ? e('div', { style: { width: '100%', display: 'flex', flexDirection: 'column', gap: 12 } },
+            e('p', { style: sh.eyebrow }, 'Tema'),
+            e('select', {
+              value: themeInput, onChange: ev => setThemeInput(ev.target.value),
+              style: { width: '100%', background: '#111', border: '1px solid #222', borderRadius: 4, color: '#e8e2d9', fontSize: 14, padding: '12px 16px', outline: 'none', fontFamily: 'inherit' }
+            }, ...DESTINO_TEMAS.map(t => e('option', { key: t, value: t }, t))),
+            e(Btn, { onClick: hostStartGame, disabled: loading, style: { background: '#e06080', color: '#fff' } }, loading ? 'Gerando...' : 'Gerar nova rodada')
+          )
+        : e('p', { style: sh.instruction }, 'Aguardando o host gerar a rodada...')
+    )
+  );
+
+  if (state.phase === 'playing') return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: roseBg } }),
+    e(Screen, null,
+      e('div', { style: { ...sh.speakerBox, background: '#0f060a', borderColor: '#3a0a1a', width: '100%' } },
+        e('p', { style: { color: '#8a4060', fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase', marginBottom: 4 } }, 'Dica ' + (state.currentHint + 1) + ' de 5'),
+        e('p', { style: { color: '#f0a0b8', fontSize: 15, textAlign: 'center', lineHeight: '1.6' } }, (state.hints || [])[state.currentHint] || '...')
+      ),
+      e('div', { style: { ...sh.speakerBox, background: '#160610', borderColor: '#2a0a20', width: '100%' } },
+        e('p', { style: { ...sh.speakerEyebrow, color: '#6a3050' } }, isMyTurn ? 'Sua vez de jogar!' : 'Vez de'),
+        e('p', { style: { ...sh.speakerName, color: '#f0a0b8' } }, isMyTurn ? myName : (players[state.currentPlayer]?.name || playerLabel(state.currentPlayer)))
+      ),
+      isMyTurn
+        ? e('div', { style: { width: '100%', display: 'flex', flexDirection: 'column', gap: 10 } },
+            e('input', {
+              type: 'text', placeholder: 'Seu palpite...',
+              value: guessInput, onChange: ev => setGuessInput(ev.target.value),
+              style: { ...inputStyle }
+            }),
+            e('div', { style: { display: 'flex', gap: 10 } },
+              e(Btn, { ghost: true, onClick: passGuess, style: { flex: 1 } }, 'Passar a vez'),
+              e(Btn, { onClick: submitGuess, disabled: !guessInput.trim(), style: { flex: 1, background: '#e06080', color: '#fff' } }, 'Enviar palpite')
+            )
+          )
+        : e('p', { style: sh.instruction }, 'Aguardando ' + (players[state.currentPlayer]?.name || playerLabel(state.currentPlayer)) + '...')
+    )
+  );
+
+  if (state.phase === 'guessed') {
+    const pts = state.pointsWon || 1;
+    return e('div', { style: sh.gameRoot },
+      e('div', { style: { ...sh.bg, background: roseBg } }),
+      e(Screen, null,
+        e('span', { style: { fontSize: 56 } }, '🎉'),
+        e('p', { style: { color: '#f0a0b8', fontSize: 18, fontWeight: 500, textAlign: 'center' } }, (players[state.winner]?.name || playerLabel(state.winner)) + ' acertou!'),
+        e('div', { style: { ...sh.wordBox, background: '#0f060a', borderColor: '#3a0a1a', flexDirection: 'column', gap: 6 } },
+          e('p', { style: { color: '#6a3048', fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase' } }, 'A resposta era'),
+          e('p', { style: { color: '#f0a0b8', fontSize: 32, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, state.word),
+          e('p', { style: { color: '#c06080', fontSize: 13 } }, '+' + pts + ' pontos — Dica ' + (state.currentHint + 1))
+        ),
+        isHost ? e(Btn, { onClick: nextRound, style: { background: '#e06080', color: '#fff' } }, 'Próxima rodada →') : e('p', { style: sh.instruction }, 'Aguardando próxima rodada...')
+      )
+    );
+  }
+
+  if (state.phase === 'reveal') return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: roseBg } }),
+    e(Screen, null,
+      e('p', { style: sh.eyebrow }, 'Ninguém acertou!'),
+      e('div', { style: { ...sh.wordBox, background: '#0f060a', borderColor: '#3a0a1a', flexDirection: 'column', gap: 8 } },
+        e('p', { style: { color: '#6a3048', fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase' } }, 'A resposta era'),
+        e('p', { style: { color: '#f0a0b8', fontSize: 36, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, state.word)
+      ),
+      isHost ? e(Btn, { onClick: nextRound, style: { background: '#e06080', color: '#fff' } }, 'Próxima rodada →') : e('p', { style: sh.instruction }, 'Aguardando próxima rodada...')
+    )
+  );
+
+  return null;
+}
+
 // ── LOCAL HUB (original) ───────────────────────────────
 function LocalHub({ onBack }) {
   const [screen, setScreen] = useState('hub');
@@ -2253,9 +2715,12 @@ function LocalHub({ onBack }) {
     setNumPlayers(n); setScreen(selectedGame.id);
   };
 
-  if (screen === 'impostor' && numPlayers) return e(ImpostorGame, { numPlayers, onBack: goHub });
-  if (screen === 'age' && numPlayers) return e(AgeGame, { numPlayers, onBack: goHub });
-  if (screen === 'score' && numPlayers) return e(ScoreGame, { numPlayers, onBack: goHub });
+  if (screen === 'impostor'  && numPlayers) return e(ImpostorGame,  { numPlayers, onBack: goHub });
+  if (screen === 'age'       && numPlayers) return e(AgeGame,       { numPlayers, onBack: goHub });
+  if (screen === 'score'     && numPlayers) return e(ScoreGame,     { numPlayers, onBack: goHub });
+  if (screen === 'mimica'    && numPlayers) return e(MimicaGame,    { numPlayers, onBack: goHub });
+  if (screen === 'quemsoueu' && numPlayers) return e(QuemSouEuGame, { numPlayers, onBack: goHub });
+  if (screen === 'destino'   && numPlayers) return e(DestinoGame,   { numPlayers, onBack: goHub });
 
   if (screen === 'hub') return e('div', { style: sh.hubRoot },
     e('div', { style: sh.hubBg }),
