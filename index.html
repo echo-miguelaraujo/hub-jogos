@@ -677,11 +677,836 @@ function ScoreGame({ numPlayers, onBack }) {
   return null;
 }
 
+// ── MÍMICA POR EQUIPES ────────────────────────────────
+const MIMICA_TEMAS = ['Filmes', 'Esportes', 'Ações Absurdas', 'Cultura Pop', 'Animais', 'Profissões', 'Objetos', 'Comidas'];
+const MIMICA_BASE = {
+  'Filmes': ['Titanic','Avatar','Vingadores','Shrek','Homem-Aranha','O Rei Leão','Interstellar','Matrix','Harry Potter','Frozen'],
+  'Esportes': ['Futebol','Surfe','Natação','Basquete','Golfe','Tênis','Ciclismo','Vôlei','Boxe','Hipismo'],
+  'Ações Absurdas': ['Escorregar na banana','Lutar contra fantasma','Tocar harpa embaixo dágua','Espirrar na hora errada','Perseguir galinha'],
+  'Cultura Pop': ['TikTok','Selfie','Meme','Podcast','Influencer','Unboxing','Live','Reels','Stories','Viral'],
+  'Animais': ['Elefante','Golfinho','Preguiça','Pinguim','Girafa','Coala','Flamingo','Polvos','Canguru','Iguana'],
+  'Profissões': ['Dentista','Astronauta','Chef de cozinha','Bombeiro','Maestro','Mágico','Piloto','Detetive','DJ','Árbitro'],
+  'Objetos': ['Geladeira','Guarda-chuva','Espelho','Violão','Escada','Lupa','Martelo','Foguete','Tesoura','Globo'],
+  'Comidas': ['Brigadeiro','Churrasco','Tapioca','Ramen','Crepe','Fondue','Paella','Pão de queijo','Açaí','Sushi'],
+};
+
+async function generateMimicaWords(temas, usedWords) {
+  const temasStr = temas.join(', ');
+  const usedStr = usedWords.length > 0 ? 'Palavras já usadas (não repita): ' + usedWords.slice(-30).join(', ') + '.' : '';
+  const prompt = `Você é um gerador de palavras para o jogo Mímica.\nTemas escolhidos: ${temasStr}.\n${usedStr}\nGere EXATAMENTE 20 palavras em português brasileiro, misturando os temas proporcionalmente.\nCada palavra deve ser concreta e fácil de mimar.\nResponda SOMENTE um array JSON válido sem markdown: ["palavra1","palavra2",...]`;
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 500, messages: [{ role: 'user', content: prompt }] }),
+  });
+  const data = await res.json();
+  const text = (data.content || []).find(b => b.type === 'text')?.text || '[]';
+  return JSON.parse(text.replace(/```json|```/g, '').trim());
+}
+
+function MimicaGame({ numPlayers, onBack }) {
+  const e = React.createElement;
+  const orangeBg = 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(224,112,64,0.07) 0%, transparent 70%)';
+  const P = { CONFIG:'config', TEMAS:'temas', MODE:'mode', SETUP_TEAMS:'setup_teams', ROUND_START:'round_start', MIMING:'miming', ROUND_END:'round_end', GAME_END:'game_end' };
+  const [phase, setPhase] = useState(P.CONFIG);
+  const [selectedTemas, setSelectedTemas] = useState(['Filmes','Cultura Pop','Ações Absurdas']);
+  const [gameMode, setGameMode] = useState(null); // 'unlimited' | 'race'
+  const [roundTime, setRoundTime] = useState(60);
+  const [targetScore, setTargetScore] = useState(10);
+  const [raceCount, setRaceCount] = useState(3);
+  const [teams, setTeams] = useState([]);
+  const [currentTeam, setCurrentTeam] = useState(0);
+  const [scores, setScores] = useState([0, 0]);
+  const [roundNum, setRoundNum] = useState(1);
+  const [deck, setDeck] = useState([]);
+  const [usedWords, setUsedWords] = useState([]);
+  const [currentWord, setCurrentWord] = useState('');
+  const [countdown, setCountdown] = useState(null);
+  const [hits, setHits] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [isMimico, setIsMimico] = useState(false);
+  const [mimicoIdx, setMimicoIdx] = useState(0);
+  const timerRef = useRef(null);
+
+  const teamColors = ['#e07040','#4a9fd4'];
+  const teamNames = ['Time A', 'Time B'];
+
+  const buildDeck = () => {
+    let pool = [];
+    selectedTemas.forEach(t => { if (MIMICA_BASE[t]) pool = [...pool, ...MIMICA_BASE[t]]; });
+    return shuffle(pool.filter(w => !usedWords.includes(w)));
+  };
+
+  const startDeck = async () => {
+    setLoading(true);
+    try {
+      const ai = await generateMimicaWords(selectedTemas, usedWords);
+      const base = buildDeck();
+      const combined = shuffle([...base, ...ai.filter(w => !usedWords.includes(w))]);
+      setDeck(combined);
+      setLoading(false);
+      return combined;
+    } catch(ex) {
+      const base = buildDeck();
+      setDeck(base);
+      setLoading(false);
+      return base;
+    }
+  };
+
+  const setupTeams = () => {
+    const names = Array.from({length: numPlayers}, (_, i) => 'Jogador ' + (i + 1));
+    const shuffled = shuffle(names);
+    const half = Math.ceil(shuffled.length / 2);
+    setTeams([shuffled.slice(0, half), shuffled.slice(half)]);
+    setScores([0, 0]);
+    setCurrentTeam(0);
+    setMimicoIdx(0);
+    setRoundNum(1);
+  };
+
+  const startRound = async (d) => {
+    const activeDeck = d || deck;
+    if (activeDeck.length === 0) {
+      const newDeck = await startDeck();
+      setCurrentWord(newDeck[0]);
+      setDeck(newDeck.slice(1));
+    } else {
+      setCurrentWord(activeDeck[0]);
+      setDeck(activeDeck.slice(1));
+    }
+    setHits(0);
+    setCountdown(roundTime);
+    setPhase(P.MIMING);
+  };
+
+  useEffect(() => {
+    if (phase !== P.MIMING || countdown === null) return;
+    if (countdown <= 0) { clearInterval(timerRef.current); endRound(); return; }
+    timerRef.current = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(timerRef.current);
+  }, [phase, countdown]);
+
+  const nextWord = () => {
+    const newHits = hits + 1;
+    setHits(newHits);
+    setUsedWords(u => [...u, currentWord]);
+    if (gameMode === 'race' && newHits >= raceCount) { endRound(newHits); return; }
+    if (deck.length > 0) { setCurrentWord(deck[0]); setDeck(d => d.slice(1)); }
+    else { endRound(newHits); }
+  };
+
+  const endRound = (finalHits) => {
+    clearTimeout(timerRef.current);
+    const h = finalHits !== undefined ? finalHits : hits;
+    const newScores = [...scores];
+    newScores[currentTeam] += h;
+    setScores(newScores);
+    setPhase(P.ROUND_END);
+    const winner = newScores.findIndex(s => s >= targetScore);
+    if (winner >= 0) setTimeout(() => setPhase(P.GAME_END), 100);
+  };
+
+  const nextRound = () => {
+    const nextTeam = (currentTeam + 1) % 2;
+    setCurrentTeam(nextTeam);
+    setMimicoIdx(m => (m + 1) % (teams[nextTeam]?.length || 1));
+    setRoundNum(r => r + 1);
+    setPhase(P.ROUND_START);
+  };
+
+  if (phase === P.CONFIG) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: orangeBg } }),
+    e(Screen, null,
+      e('div', { style: sh.gameHeader }, e('button', { style: sh.backBtn, onClick: onBack }, '← Hub')),
+      e('p', { style: { ...sh.eyebrow, marginBottom: 4 } }, 'Configuração'),
+      e('div', { style: { ...sh.gameTitleSmall, justifyContent: 'center' } }, 'Mímica', e('span', { style: { ...sh.gameTitleDot, color: '#e07040' } }, '.')),
+      e('div', { style: { width: '100%', display: 'flex', flexDirection: 'column', gap: 12 } },
+        e('p', { style: { color: '#666', fontSize: 12, letterSpacing: '2px', textTransform: 'uppercase' } }, 'Tempo por rodada'),
+        e('div', { style: { display: 'flex', gap: 8 } },
+          ...[60,90,120].map(t => e('button', { key: t, onClick: () => setRoundTime(t),
+            style: { flex: 1, padding: '12px 0', border: roundTime === t ? '1px solid #e07040' : '1px solid #1e1e1e',
+              background: roundTime === t ? '#1a0e08' : '#111', color: roundTime === t ? '#e07040' : '#555',
+              borderRadius: 4, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', letterSpacing: '1px' } },
+            t + 's'))
+        ),
+        e('p', { style: { color: '#666', fontSize: 12, letterSpacing: '2px', textTransform: 'uppercase', marginTop: 8 } }, 'Pontos para vencer'),
+        e('div', { style: { display: 'flex', gap: 8 } },
+          ...[10,15,20].map(s => e('button', { key: s, onClick: () => setTargetScore(s),
+            style: { flex: 1, padding: '12px 0', border: targetScore === s ? '1px solid #e07040' : '1px solid #1e1e1e',
+              background: targetScore === s ? '#1a0e08' : '#111', color: targetScore === s ? '#e07040' : '#555',
+              borderRadius: 4, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', letterSpacing: '1px' } },
+            s + ' pts'))
+        )
+      ),
+      e(Btn, { onClick: () => setPhase(P.TEMAS), style: { background: '#e07040', color: '#0f0f0f' } }, 'Escolher temas →')
+    )
+  );
+
+  if (phase === P.TEMAS) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: orangeBg } }),
+    e(Screen, null,
+      e('button', { style: sh.backBtn, onClick: () => setPhase(P.CONFIG) }, '← Voltar'),
+      e('p', { style: { ...sh.eyebrow, marginBottom: 4 } }, 'Selecione os temas'),
+      e('div', { style: { width: '100%', display: 'flex', flexDirection: 'column', gap: 10 } },
+        ...MIMICA_TEMAS.map(t => {
+          const sel = selectedTemas.includes(t);
+          return e('button', { key: t, onClick: () => setSelectedTemas(prev => sel ? prev.filter(x=>x!==t) : [...prev,t]),
+            style: { display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
+              border: sel ? '1px solid #e07040' : '1px solid #1e1e1e',
+              background: sel ? '#1a0e08' : '#111', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' } },
+            e('span', { style: { width: 18, height: 18, borderRadius: 3, border: sel ? '2px solid #e07040' : '2px solid #333',
+              background: sel ? '#e07040' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 } },
+              sel ? e('span', { style: { color: '#0f0f0f', fontSize: 11, fontWeight: 700 } }, '✓') : null),
+            e('span', { style: { color: sel ? '#f0b090' : '#666', fontSize: 14 } }, t)
+          );
+        })
+      ),
+      e(Btn, {
+        onClick: () => setPhase(P.MODE), disabled: selectedTemas.length === 0,
+        style: { background: '#e07040', color: '#0f0f0f' }
+      }, 'Próximo →')
+    )
+  );
+
+  if (phase === P.MODE) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: orangeBg } }),
+    e(Screen, null,
+      e('button', { style: sh.backBtn, onClick: () => setPhase(P.TEMAS) }, '← Voltar'),
+      e('p', { style: sh.eyebrow }, 'Modo de jogo'),
+      e('div', { style: { ...sh.modeGrid, width: '100%' } },
+        e('button', { style: sh.modeCard, onClick: () => { setGameMode('unlimited'); setPhase(P.SETUP_TEAMS); setupTeams(); } },
+          e('span', { style: sh.modeEmoji }, '♾️'),
+          e('span', { style: sh.modeName }, 'Palavras Ilimitadas'),
+          e('span', { style: sh.modeDesc }, 'O mímico faz quantas palavras conseguir até o cronômetro zerar. Cada acerto = 1 ponto.')
+        ),
+        e('button', { style: sh.modeCard, onClick: () => { setGameMode('race'); setPhase(P.SETUP_TEAMS); setupTeams(); } },
+          e('span', { style: sh.modeEmoji }, '🏁'),
+          e('span', { style: sh.modeName }, 'Corrida Contra o Tempo'),
+          e('span', { style: sh.modeDesc }, 'Acerte ' + raceCount + ' palavras antes que o tempo acabe. Cada rodada ganha = 1 ponto.')
+        )
+      )
+    )
+  );
+
+  if (phase === P.SETUP_TEAMS && teams.length >= 2) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: orangeBg } }),
+    e(Screen, null,
+      e('p', { style: sh.eyebrow }, 'Divisão dos times'),
+      e('div', { style: { width: '100%', display: 'flex', flexDirection: 'column', gap: 12 } },
+        teams.map((team, ti) => e('div', { key: ti, style: { background: '#111', border: '1px solid #1e1e1e', borderRadius: 6, padding: '16px' } },
+          e('p', { style: { color: teamColors[ti], fontSize: 12, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 10 } }, teamNames[ti]),
+          e('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
+            ...team.map(name => e('span', { key: name, style: { background: '#1a1a1a', border: '1px solid #222', borderRadius: 100, padding: '4px 12px', color: '#888', fontSize: 12 } }, name))
+          )
+        ))
+      ),
+      loading
+        ? e('div', { style: sh.loadingBox }, e('span', { style: sh.loadingDot }), e('span', { style: sh.loadingText }, 'Gerando palavras...'))
+        : e(Btn, {
+            onClick: async () => { const d = await startDeck(); setPhase(P.ROUND_START); },
+            style: { background: '#e07040', color: '#0f0f0f' }
+          }, 'Começar jogo!')
+    )
+  );
+
+  if (phase === P.ROUND_START) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: orangeBg } }),
+    e(Screen, null,
+      e('div', { style: { ...sh.roundBadge, borderColor: teamColors[currentTeam] + '44', color: teamColors[currentTeam] } }, 'Rodada ' + roundNum),
+      e('div', { style: { ...sh.wordBox, background: '#0f0a08', borderColor: teamColors[currentTeam] + '44', flexDirection: 'column', gap: 8 } },
+        e('p', { style: { color: teamColors[currentTeam], fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase' } }, 'Vez de jogar'),
+        e('p', { style: { ...sh.wordText, color: '#f0b090' } }, teamNames[currentTeam]),
+        e('p', { style: { color: '#555', fontSize: 13 } }, 'Mímico: ' + (teams[currentTeam]?.[mimicoIdx % teams[currentTeam].length] || '—'))
+      ),
+      e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '0 4px' } },
+        ...scores.map((s, ti) => e('div', { key: ti, style: { textAlign: 'center' } },
+          e('p', { style: { color: teamColors[ti], fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 4 } }, teamNames[ti]),
+          e('p', { style: { color: '#e8e2d9', fontSize: 28, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, s + ' pts')
+        ))
+      ),
+      e(Btn, { onClick: () => startRound(), style: { background: '#e07040', color: '#0f0f0f' } }, 'Iniciar rodada →')
+    )
+  );
+
+  if (phase === P.MIMING) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: orangeBg } }),
+    e(Screen, null,
+      e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' } },
+        e('p', { style: { color: teamColors[currentTeam], fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase' } }, teamNames[currentTeam]),
+        e(CountdownRing, { countdown, total: roundTime, color: teamColors[currentTeam] })
+      ),
+      e('div', { style: { ...sh.wordBox, background: '#0f0a08', borderColor: '#3a1a08', padding: '48px 36px' } },
+        e('span', { style: { ...sh.wordText, fontSize: 'clamp(26px,7vw,38px)', letterSpacing: -1 } }, currentWord)
+      ),
+      e('p', { style: { color: '#444', fontSize: 12, textAlign: 'center' } }, '✋ ' + hits + ' acerto' + (hits !== 1 ? 's' : '') + ' até agora'),
+      e('div', { style: { display: 'flex', gap: 10, width: '100%' } },
+        e('button', { onClick: () => { setUsedWords(u => [...u, currentWord]); if (deck.length > 0) { setCurrentWord(deck[0]); setDeck(d => d.slice(1)); } else endRound(); },
+          style: { ...sh.ghostBtn, flex: 1 } }, 'Pular'),
+        e('button', { onClick: nextWord,
+          style: { ...sh.btn, flex: 2, background: '#e07040' } }, '✓ Acertou!')
+      )
+    )
+  );
+
+  if (phase === P.ROUND_END) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: orangeBg } }),
+    e(Screen, null,
+      e('p', { style: sh.eyebrow }, 'Fim da rodada'),
+      e('div', { style: { ...sh.wordBox, background: '#0f0a08', borderColor: '#3a1a08', flexDirection: 'column', gap: 4 } },
+        e('p', { style: { color: '#a06040', fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase' } }, teamNames[currentTeam] + ' fez'),
+        e('p', { style: { color: '#f0b090', fontSize: 56, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif", letterSpacing: -2 } }, hits),
+        e('p', { style: { color: '#555', fontSize: 13 } }, 'ponto' + (hits !== 1 ? 's' : '') + ' nessa rodada')
+      ),
+      e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '0 4px' } },
+        ...scores.map((s, ti) => e('div', { key: ti, style: { textAlign: 'center' } },
+          e('p', { style: { color: teamColors[ti], fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 4 } }, teamNames[ti]),
+          e('p', { style: { color: '#e8e2d9', fontSize: 28, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, s + ' pts')
+        ))
+      ),
+      e(Btn, { onClick: nextRound, style: { background: '#e07040', color: '#0f0f0f' } }, 'Próxima rodada →')
+    )
+  );
+
+  if (phase === P.GAME_END) {
+    const winner = scores[0] > scores[1] ? 0 : scores[1] > scores[0] ? 1 : -1;
+    return e('div', { style: sh.gameRoot },
+      e('div', { style: { ...sh.bg, background: orangeBg } }),
+      e(Screen, null,
+        e('div', { style: { ...sh.gameTitleSmall } }, 'mímica', e('span', { style: { ...sh.gameTitleDot, color: '#e07040' } }, '.')),
+        e('div', { style: { ...sh.wordBox, background: '#0f0a08', borderColor: '#3a1a08', flexDirection: 'column', gap: 8 } },
+          e('p', { style: { color: '#a06040', fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase' } }, winner >= 0 ? 'Campeão' : 'Empate!'),
+          winner >= 0 ? e('p', { style: { color: teamColors[winner], fontSize: 36, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, teamNames[winner]) : null
+        ),
+        e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '0 4px' } },
+          ...scores.map((s, ti) => e('div', { key: ti, style: { textAlign: 'center' } },
+            e('p', { style: { color: teamColors[ti], fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 4 } }, teamNames[ti]),
+            e('p', { style: { color: '#e8e2d9', fontSize: 32, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, s + ' pts')
+          ))
+        ),
+        e(Btn, { onClick: () => { setPhase(P.CONFIG); setScores([0,0]); setRoundNum(1); }, style: { background: '#e07040', color: '#0f0f0f' } }, 'Jogar novamente'),
+        e(Btn, { ghost: true, onClick: onBack }, 'Menu do hub')
+      )
+    );
+  }
+
+  return null;
+}
+
+// ── QUEM SOU EU ───────────────────────────────────────
+const QUEMSOUEU_CATS = ['Celebridades', 'Personagens de Desenho', 'Figuras Históricas', 'Heróis e Vilões', 'Personagens de Filme', 'Animais Famosos'];
+
+async function generateIdentities(categories, numPlayers, usedNames) {
+  const catsStr = categories.join(', ');
+  const usedStr = usedNames.length > 0 ? 'Não repita: ' + usedNames.join(', ') + '.' : '';
+  const prompt = `Você é um gerador de identidades para o jogo "Quem Sou Eu?"\nCategorias: ${catsStr}.\n${usedStr}\nGere EXATAMENTE ${numPlayers} identidades únicas e bem conhecidas em português brasileiro.\nResponda SOMENTE um array JSON: ["Nome1","Nome2",...]`;
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 300, messages: [{ role: 'user', content: prompt }] }),
+  });
+  const data = await res.json();
+  const text = (data.content || []).find(b => b.type === 'text')?.text || '[]';
+  return JSON.parse(text.replace(/```json|```/g, '').trim());
+}
+
+function QuemSouEuGame({ numPlayers, onBack }) {
+  const e = React.createElement;
+  const purpleBg = 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(160,112,224,0.07) 0%, transparent 70%)';
+  const P = { CAT:'cat', LOADING:'loading', REVEAL:'reveal', SHOWN:'shown', PLAYING:'playing', GUESS:'guess', END:'end' };
+  const [phase, setPhase] = useState(P.CAT);
+  const [selectedCats, setSelectedCats] = useState(['Celebridades','Personagens de Desenho']);
+  const [identities, setIdentities] = useState([]);
+  const [cur, setCur] = useState(0);
+  const [guessInput, setGuessInput] = useState('');
+  const [eliminated, setEliminated] = useState([]);
+  const [activePlayer, setActivePlayer] = useState(0);
+  const [canContinue, setCanContinue] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [countdown, setCountdown] = useState(null);
+  const usedRef = useRef([]);
+
+  const startGame = async () => {
+    setLoading(true); setPhase(P.LOADING);
+    try {
+      const ids = await generateIdentities(selectedCats, numPlayers, usedRef.current);
+      usedRef.current = [...usedRef.current, ...ids];
+      setIdentities(ids);
+      setEliminated([]);
+      setActivePlayer(0);
+      setCur(0);
+      setLoading(false);
+      setPhase(P.REVEAL);
+    } catch(ex) {
+      setLoading(false); setPhase(P.CAT);
+    }
+  };
+
+  const showIdentity = () => { setCountdown(5); setPhase(P.SHOWN); };
+
+  useEffect(() => {
+    if (phase !== P.SHOWN || countdown === null) return;
+    if (countdown <= 0) {
+      if (cur < numPlayers - 1) { setCur(c => c + 1); setPhase(P.REVEAL); setCountdown(null); }
+      else { setActivePlayer(0); setPhase(P.PLAYING); setCountdown(null); }
+      return;
+    }
+    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [phase, countdown, cur]);
+
+  const handleAnswer = (isYes) => {
+    if (isYes) { setCanContinue(false); }
+    else { advanceTurn(); }
+  };
+
+  const advanceTurn = () => {
+    setCanContinue(false);
+    const remaining = Array.from({length: numPlayers}, (_, i) => i).filter(i => !eliminated.includes(i));
+    const currentPos = remaining.indexOf(activePlayer);
+    const nextPos = (currentPos + 1) % remaining.length;
+    setActivePlayer(remaining[nextPos]);
+  };
+
+  const handleGuess = (correct) => {
+    if (correct) {
+      const newElim = [...eliminated, activePlayer];
+      setEliminated(newElim);
+      if (newElim.length >= numPlayers) { setPhase(P.END); return; }
+      const remaining = Array.from({length: numPlayers}, (_, i) => i).filter(i => !newElim.includes(i));
+      setActivePlayer(remaining[0]);
+    }
+    setGuessInput('');
+    setPhase(P.PLAYING);
+  };
+
+  const getOtherIdentities = (myIdx) =>
+    identities.map((id, i) => ({ name: 'Jogador ' + (i + 1), identity: id, isSelf: i === myIdx }));
+
+  if (phase === P.CAT) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: purpleBg } }),
+    e(Screen, null,
+      e('div', { style: sh.gameHeader }, e('button', { style: sh.backBtn, onClick: onBack }, '← Hub')),
+      e('p', { style: sh.eyebrow }, 'Categorias'),
+      e('div', { style: { ...sh.gameTitleSmall, justifyContent: 'center' } }, 'Quem Sou Eu', e('span', { style: { ...sh.gameTitleDot, color: '#a070e0' } }, '?')),
+      e('div', { style: { width: '100%', display: 'flex', flexDirection: 'column', gap: 10 } },
+        ...QUEMSOUEU_CATS.map(c => {
+          const sel = selectedCats.includes(c);
+          return e('button', { key: c, onClick: () => setSelectedCats(prev => sel ? prev.filter(x=>x!==c) : [...prev,c]),
+            style: { display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
+              border: sel ? '1px solid #a070e0' : '1px solid #1e1e1e',
+              background: sel ? '#110a1a' : '#111', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' } },
+            e('span', { style: { width: 18, height: 18, borderRadius: 3, border: sel ? '2px solid #a070e0' : '2px solid #333',
+              background: sel ? '#a070e0' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 } },
+              sel ? e('span', { style: { color: '#fff', fontSize: 11, fontWeight: 700 } }, '✓') : null),
+            e('span', { style: { color: sel ? '#d0b0f0' : '#666', fontSize: 14 } }, c)
+          );
+        })
+      ),
+      e(Btn, { onClick: startGame, disabled: selectedCats.length === 0, style: { background: '#a070e0', color: '#fff' } }, 'Gerar identidades →')
+    )
+  );
+
+  if (phase === P.LOADING) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: purpleBg } }),
+    e(Screen, null,
+      e('div', { style: sh.loadingBox },
+        e('span', { style: { ...sh.loadingDot, background: '#a070e0' } }),
+        e('span', { style: sh.loadingText }, 'Gerando identidades...')
+      )
+    )
+  );
+
+  if (phase === P.REVEAL) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: purpleBg } }),
+    e(Screen, null,
+      e(Tag, { color: '#a070e0' }, 'Jogador ' + (cur + 1)),
+      e('p', { style: sh.instruction }, 'Passe o celular para o grupo ver, menos ' + ('Jogador ' + (cur + 1)) + '.\nTodos memorizam o personagem e devolvem.'),
+      e('div', { style: { ...sh.wordBox, background: '#110a1a', borderColor: '#2a1a4a' } },
+        e('span', { style: { ...sh.wordText, color: '#d0b0f0' } }, identities[cur] || '...')
+      ),
+      e(Btn, { onClick: showIdentity, style: { background: '#a070e0', color: '#fff' } }, 'Devolveram → Mostrar')
+    )
+  );
+
+  if (phase === P.SHOWN) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: purpleBg } }),
+    e(Screen, null,
+      e(Tag, { color: '#a070e0' }, 'Jogador ' + (cur + 1)),
+      e('div', { style: { ...sh.wordBox, background: '#110a1a', borderColor: '#2a1a4a', flexDirection: 'column', gap: 6 } },
+        e('p', { style: { color: '#6a408a', fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase' } }, 'Sua identidade está oculta'),
+        e('p', { style: { color: '#8a608a', fontSize: 13, textAlign: 'center', lineHeight: '1.6' } }, 'Faça perguntas de Sim ou Não para descobrir quem você é!')
+      ),
+      e(CountdownRing, { countdown, total: 5, color: '#a070e0' }),
+      e('p', { style: sh.hint }, cur < numPlayers - 1 ? 'Passando para o próximo...' : 'Iniciando o jogo...')
+    )
+  );
+
+  if (phase === P.PLAYING) {
+    const remaining = Array.from({length: numPlayers}, (_, i) => i).filter(i => !eliminated.includes(i));
+    const myId = activePlayer;
+    return e('div', { style: sh.gameRoot },
+      e('div', { style: { ...sh.bg, background: purpleBg } }),
+      e(Screen, null,
+        e('div', { style: sh.roundBadge }, remaining.length + ' restante' + (remaining.length !== 1 ? 's' : '')),
+        e('div', { style: { ...sh.speakerBox, background: '#110a1a', borderColor: '#2a1a4a' } },
+          e('p', { style: { ...sh.speakerEyebrow, color: '#6a408a' } }, 'Vez de jogar'),
+          e('p', { style: { ...sh.speakerName, color: '#d0b0f0' } }, 'Jogador ' + (myId + 1)),
+          e('p', { style: sh.speakerSub }, 'Faça uma pergunta de Sim ou Não')
+        ),
+        e('p', { style: { color: '#444', fontSize: 13, textAlign: 'center' } }, 'O grupo responde em voz alta'),
+        e('div', { style: { display: 'flex', gap: 10, width: '100%' } },
+          e('button', { onClick: () => handleAnswer(false),
+            style: { flex: 1, padding: '14px', border: '1px solid #3a1a1a', background: '#1a0a0a', color: '#e05555', borderRadius: 4, fontSize: 18, cursor: 'pointer' } }, '✗ Não'),
+          e('button', { onClick: () => { setCanContinue(true); },
+            style: { flex: 1, padding: '14px', border: '1px solid #1a3a1a', background: '#0a1a0a', color: '#4ab84a', borderRadius: 4, fontSize: 18, cursor: 'pointer' } }, '✓ Sim')
+        ),
+        canContinue ? e('div', { style: { display: 'flex', gap: 10, width: '100%', flexDirection: 'column' } },
+          e('p', { style: { color: '#555', fontSize: 12, textAlign: 'center', letterSpacing: '1px' } }, 'Jogador ' + (myId + 1) + ', o que quer fazer?'),
+          e('div', { style: { display: 'flex', gap: 10, width: '100%' } },
+            e(Btn, { ghost: true, onClick: advanceTurn, style: { flex: 1 } }, 'Passar vez'),
+            e(Btn, { onClick: () => setPhase(P.GUESS), style: { flex: 1, background: '#a070e0', color: '#fff' } }, '🎯 Dar palpite')
+          )
+        ) : null
+      )
+    );
+  }
+
+  if (phase === P.GUESS) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: purpleBg } }),
+    e(Screen, null,
+      e(Tag, { color: '#a070e0' }, 'Jogador ' + (activePlayer + 1)),
+      e('p', { style: sh.instruction }, 'Dê o seu palpite! Quem você acha que é?'),
+      e('input', {
+        type: 'text', placeholder: 'Escreva o palpite...',
+        value: guessInput, onChange: ev => setGuessInput(ev.target.value),
+        style: { ...inputStyle }
+      }),
+      e('p', { style: { color: '#555', fontSize: 13, textAlign: 'center' } }, 'O grupo valida se acertou'),
+      e('div', { style: { display: 'flex', gap: 10, width: '100%' } },
+        e('button', { onClick: () => handleGuess(false),
+          style: { flex: 1, padding: '14px', border: '1px solid #3a1a1a', background: '#1a0a0a', color: '#e05555', borderRadius: 4, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', letterSpacing: '1px', textTransform: 'uppercase' } }, 'Errou'),
+        e('button', { onClick: () => handleGuess(true),
+          style: { flex: 1, padding: '14px', border: '1px solid #1a3a1a', background: '#0a1a0a', color: '#4ab84a', borderRadius: 4, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', letterSpacing: '1px', textTransform: 'uppercase' } }, 'Acertou! 🎉')
+      ),
+      e(Btn, { ghost: true, onClick: () => { setGuessInput(''); setPhase(P.PLAYING); } }, 'Cancelar')
+    )
+  );
+
+  if (phase === P.END) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: purpleBg } }),
+    e(Screen, null,
+      e('div', { style: { ...sh.gameTitleSmall, justifyContent: 'center' } }, 'Quem Sou Eu', e('span', { style: { ...sh.gameTitleDot, color: '#a070e0' } }, '?')),
+      e('p', { style: sh.instruction }, 'Todos descobriram suas identidades! 🎉'),
+      e('div', { style: { ...sh.ruleCard, gap: 0, padding: 0, overflow: 'hidden', width: '100%' } },
+        e('div', { style: { padding: '12px 16px', borderBottom: '1px solid #1a1a1a' } },
+          e('span', { style: { color: '#444', fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase' } }, 'Identidades da rodada')
+        ),
+        ...identities.map((id, i) => e('div', { key: i, style: { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: i < identities.length - 1 ? '1px solid #111' : 'none' } },
+          e('span', { style: { color: '#a070e0', fontSize: 13, minWidth: 72 } }, 'Jogador ' + (i + 1)),
+          e('span', { style: { color: '#e8e2d9', fontSize: 13, flex: 1 } }, id)
+        ))
+      ),
+      e(Btn, { onClick: () => { setPhase(P.CAT); setIdentities([]); setEliminated([]); }, style: { background: '#a070e0', color: '#fff' } }, 'Jogar novamente'),
+      e(Btn, { ghost: true, onClick: onBack }, 'Menu do hub')
+    )
+  );
+
+  return null;
+}
+
+// ── O PRÓXIMO DESTINO ─────────────────────────────────
+const DESTINO_TEMAS = ['Cidades do Mundo', 'Filmes', 'Comidas', 'Animais', 'Países', 'Celebridades', 'Objetos Curiosos', 'Personagens'];
+
+async function generateDestinoHints(word, theme) {
+  const prompt = `Você é um gerador de dicas para o jogo "O Próximo Destino" para casais.\nPalavra secreta: "${word}"\nTema: ${theme}\n\nGere EXATAMENTE 5 dicas em ordem da MAIS DIFÍCIL para a MAIS FÁCIL.\nDica 1: muito vaga e poética (quase impossível adivinhar)\nDica 2: um pouco mais específica\nDica 3: moderada\nDica 4: bem sugestiva\nDica 5: quase entrega a resposta\n\nResponda SOMENTE JSON: {"dicas":["dica1","dica2","dica3","dica4","dica5"]}`;
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 400, messages: [{ role: 'user', content: prompt }] }),
+  });
+  const data = await res.json();
+  const text = (data.content || []).find(b => b.type === 'text')?.text || '{}';
+  const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+  return parsed.dicas || [];
+}
+
+async function generateDestinoWord(theme) {
+  const prompt = `Você é um gerador de palavras para o jogo "O Próximo Destino".\nTema: ${theme}\nGere UMA palavra/nome criativo e interessante para o tema, em português.\nResponda SOMENTE o nome, sem explicação.`;
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 50, messages: [{ role: 'user', content: prompt }] }),
+  });
+  const data = await res.json();
+  return ((data.content || []).find(b => b.type === 'text')?.text || '').trim();
+}
+
+function DestinoGame({ numPlayers, onBack }) {
+  const e = React.createElement;
+  const roseBg = 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(224,96,128,0.07) 0%, transparent 70%)';
+  const P = { MODE:'mode', SETUP:'setup', HINTS_SETUP:'hints_setup', WAIT:'wait', PLAYING:'playing', GUESSED:'guessed', REVEAL:'reveal', END:'end' };
+  const [phase, setPhase] = useState(P.MODE);
+  const [gameMode, setGameMode] = useState(null); // 'ai' | 'human'
+  const [selectedTheme, setSelectedTheme] = useState('Cidades do Mundo');
+  const [secretWord, setSecretWord] = useState('');
+  const [wordInput, setWordInput] = useState('');
+  const [hints, setHints] = useState([]);
+  const [customHints, setCustomHints] = useState(['','','','','']);
+  const [currentHint, setCurrentHint] = useState(0);
+  const [scores, setScores] = useState([0, 0]);
+  const [currentPlayer, setCurrentPlayer] = useState(0); // 0 = player 1, 1 = player 2
+  const [playerNames] = useState(['Jogador 1', 'Jogador 2']);
+  const [guessInput, setGuessInput] = useState('');
+  const [p1done, setP1done] = useState(false);
+  const [p2done, setP2done] = useState(false);
+  const [roundWinner, setRoundWinner] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [hintMode, setHintMode] = useState('ai'); // for human mode: 'ai' | 'manual'
+  const [roundNum, setRoundNum] = useState(1);
+
+  const pointsForHint = (h) => Math.max(1, 5 - h);
+
+  const startAIMode = async () => {
+    setLoading(true);
+    try {
+      const word = await generateDestinoWord(selectedTheme);
+      setSecretWord(word);
+      const h = await generateDestinoHints(word, selectedTheme);
+      setHints(h);
+      setCurrentHint(0); setP1done(false); setP2done(false); setCurrentPlayer(0); setGuessInput('');
+      setLoading(false); setPhase(P.PLAYING);
+    } catch(ex) { setLoading(false); }
+  };
+
+  const startHumanMode = async () => {
+    setLoading(true);
+    try {
+      if (hintMode === 'ai') {
+        const h = await generateDestinoHints(wordInput.trim(), selectedTheme);
+        setHints(h);
+      } else {
+        setHints(customHints);
+      }
+      setSecretWord(wordInput.trim());
+      setCurrentHint(0); setP1done(false); setP2done(false); setCurrentPlayer(1); setGuessInput('');
+      setLoading(false); setPhase(P.PLAYING);
+    } catch(ex) { setLoading(false); }
+  };
+
+  const submitGuess = (guess) => {
+    const correct = guess.trim().toLowerCase() === secretWord.toLowerCase();
+    if (correct) {
+      const pts = pointsForHint(currentHint);
+      const newScores = [...scores];
+      newScores[currentPlayer] += pts;
+      setScores(newScores);
+      setRoundWinner(currentPlayer);
+      setPhase(P.GUESSED);
+      return;
+    }
+    // Wrong guess - mark done and advance
+    if (currentPlayer === 0) { setP1done(true); setCurrentPlayer(1); }
+    else { setP2done(true); advanceHint(); }
+    setGuessInput('');
+  };
+
+  const passTurn = () => {
+    if (currentPlayer === 0) { setP1done(true); setCurrentPlayer(1); }
+    else { setP2done(true); advanceHint(); }
+  };
+
+  const advanceHint = () => {
+    setP1done(false); setP2done(false); setCurrentPlayer(0);
+    if (currentHint < 4) { setCurrentHint(h => h + 1); }
+    else { setPhase(P.REVEAL); }
+  };
+
+  const nextRound = () => { setRoundNum(r => r + 1); setPhase(P.MODE); setRoundWinner(null); setHints([]); setSecretWord(''); setWordInput(''); setCustomHints(['','','','','']); };
+
+  const waitScreen = (msg) => e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: roseBg } }),
+    e(Screen, null,
+      e('div', { style: { ...sh.wordBox, background: '#0f060a', borderColor: '#3a0a1a', flexDirection: 'column', gap: 12, padding: '40px 28px' } },
+        e('span', { style: { fontSize: 36 } }, '💌'),
+        e('p', { style: { color: '#c06080', fontSize: 13, textAlign: 'center', lineHeight: '1.7' } }, msg)
+      )
+    )
+  );
+
+  if (phase === P.MODE) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: roseBg } }),
+    e(Screen, null,
+      e('div', { style: sh.gameHeader }, e('button', { style: sh.backBtn, onClick: onBack }, '← Hub')),
+      e('div', { style: { ...sh.gameTitleSmall, justifyContent: 'center' } }, 'O Próximo Destino', e('span', { style: { ...sh.gameTitleDot, color: '#e06080' } }, '.')),
+      e('p', { style: { color: '#555', fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase', textAlign: 'center', marginBottom: 4 } }, 'Rodada ' + roundNum),
+      e('div', { style: { ...sh.modeGrid, width: '100%' } },
+        e('button', { style: sh.modeCard, onClick: () => setGameMode('ai') },
+          e('span', { style: sh.modeEmoji }, '🤖'),
+          e('span', { style: sh.modeName }, 'IA Generativa'),
+          e('span', { style: sh.modeDesc }, 'A IA sorteia uma palavra e cria 5 dicas automáticas')
+        ),
+        e('button', { style: sh.modeCard, onClick: () => setGameMode('human') },
+          e('span', { style: sh.modeEmoji }, '✍️'),
+          e('span', { style: sh.modeName }, 'Criador Humano'),
+          e('span', { style: sh.modeDesc }, 'Um jogador inventa a palavra secreta e escolhe as dicas')
+        )
+      ),
+      e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '0 4px' } },
+        ...scores.map((s, ti) => e('div', { key: ti, style: { textAlign: 'center' } },
+          e('p', { style: { color: '#c06080', fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 4 } }, playerNames[ti]),
+          e('p', { style: { color: '#e8e2d9', fontSize: 24, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, s + ' pts')
+        ))
+      )
+    )
+  );
+
+  if (gameMode === 'ai' && phase === P.MODE) return null; // handled above
+
+  if (gameMode === 'ai' && phase !== P.MODE) {
+    // Handled in the SETUP below after mode selection triggers
+  }
+
+  if (gameMode === 'ai' && !loading && hints.length === 0 && phase === P.MODE) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: roseBg } }),
+    e(Screen, null,
+      e('p', { style: sh.eyebrow }, 'Tema'),
+      e('div', { style: { width: '100%', display: 'flex', flexDirection: 'column', gap: 10 } },
+        ...DESTINO_TEMAS.map(t => e('button', { key: t, onClick: () => setSelectedTheme(t),
+          style: { padding: '12px 16px', border: selectedTheme === t ? '1px solid #e06080' : '1px solid #1e1e1e',
+            background: selectedTheme === t ? '#1a060e' : '#111', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit',
+            color: selectedTheme === t ? '#f0a0b8' : '#666', fontSize: 13, textAlign: 'left' } }, t))
+      ),
+      e(Btn, { onClick: startAIMode, style: { background: '#e06080', color: '#fff' } }, 'Gerar palavra →')
+    )
+  );
+
+  if (phase === P.MODE && gameMode === 'ai') return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: roseBg } }),
+    e(Screen, null,
+      e('button', { style: sh.backBtn, onClick: () => setGameMode(null) }, '← Voltar'),
+      e('p', { style: sh.eyebrow }, 'Escolha o tema'),
+      e('div', { style: { width: '100%', display: 'flex', flexDirection: 'column', gap: 8 } },
+        ...DESTINO_TEMAS.map(t => e('button', { key: t, onClick: () => setSelectedTheme(t),
+          style: { padding: '12px 16px', border: selectedTheme === t ? '1px solid #e06080' : '1px solid #1e1e1e',
+            background: selectedTheme === t ? '#1a060e' : '#111', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit',
+            color: selectedTheme === t ? '#f0a0b8' : '#666', fontSize: 13, textAlign: 'left' } }, t))
+      ),
+      loading
+        ? e('div', { style: sh.loadingBox }, e('span', { style: { ...sh.loadingDot, background: '#e06080' } }), e('span', { style: sh.loadingText }, 'Gerando...'))
+        : e(Btn, { onClick: startAIMode, style: { background: '#e06080', color: '#fff' } }, 'Gerar palavra e dicas →')
+    )
+  );
+
+  if (phase === P.MODE && gameMode === 'human') return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: roseBg } }),
+    e(Screen, null,
+      e('button', { style: sh.backBtn, onClick: () => setGameMode(null) }, '← Voltar'),
+      e('p', { style: sh.eyebrow }, 'Criador Humano — ' + playerNames[0] + ' configura'),
+      e('input', {
+        type: 'text', placeholder: 'Palavra secreta...',
+        value: wordInput, onChange: ev => setWordInput(ev.target.value),
+        style: { ...inputStyle }
+      }),
+      e('p', { style: { color: '#444', fontSize: 12, letterSpacing: '2px', textTransform: 'uppercase', marginTop: 4 } }, 'Como quer as dicas?'),
+      e('div', { style: { display: 'flex', gap: 8, width: '100%' } },
+        ...[['ai','IA gera as dicas'],['manual','Digitar manualmente']].map(([v, label]) =>
+          e('button', { key: v, onClick: () => setHintMode(v),
+            style: { flex: 1, padding: '10px', border: hintMode === v ? '1px solid #e06080' : '1px solid #1e1e1e',
+              background: hintMode === v ? '#1a060e' : '#111', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit',
+              color: hintMode === v ? '#f0a0b8' : '#666', fontSize: 12, textAlign: 'center' } }, label)
+        )
+      ),
+      hintMode === 'manual' ? e('div', { style: { width: '100%', display: 'flex', flexDirection: 'column', gap: 8 } },
+        ...customHints.map((h, i) => e('input', {
+          key: i, type: 'text', placeholder: 'Dica ' + (i+1) + (i===0?' (mais difícil)':i===4?' (mais fácil)':'') + '...',
+          value: h, onChange: ev => setCustomHints(prev => { const n=[...prev]; n[i]=ev.target.value; return n; }),
+          style: { ...inputStyle, fontSize: 13 }
+        }))
+      ) : null,
+      loading
+        ? e('div', { style: sh.loadingBox }, e('span', { style: { ...sh.loadingDot, background: '#e06080' } }), e('span', { style: sh.loadingText }, 'Gerando dicas...'))
+        : e(Btn, {
+            onClick: startHumanMode,
+            disabled: !wordInput.trim() || (hintMode === 'manual' && customHints.some(h => !h.trim())),
+            style: { background: '#e06080', color: '#fff' }
+          }, 'Iniciar rodada →')
+    )
+  );
+
+  if (phase === P.PLAYING) {
+    const isP1Turn = currentPlayer === 0 && !p1done;
+    const isP2Turn = currentPlayer === 1 && !p2done;
+    const hint = hints[currentHint] || '...';
+    const myTurn = !p1done && currentPlayer === 0 || !p2done && currentPlayer === 1;
+    return e('div', { style: sh.gameRoot },
+      e('div', { style: { ...sh.bg, background: roseBg } }),
+      e(Screen, null,
+        e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' } },
+          e('span', { style: { color: '#e06080', fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase' } }, 'Dica ' + (currentHint+1) + ' de 5'),
+          e('span', { style: { color: '#444', fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase' } }, pointsForHint(currentHint) + ' pts se acertar')
+        ),
+        e('div', { style: { ...sh.wordBox, background: '#0f060a', borderColor: '#3a0a1a', padding: '32px 24px' } },
+          e('span', { style: { ...sh.wordText, color: '#f0a0b8', textAlign: 'center', lineHeight: '1.5' } }, hint)
+        ),
+        e('div', { style: { ...sh.speakerBox, background: '#110609', borderColor: '#2a0a14' } },
+          e('p', { style: { ...sh.speakerEyebrow, color: '#8a3050' } }, 'Vez de'),
+          e('p', { style: { ...sh.speakerName, color: '#f0a0b8' } }, playerNames[currentPlayer])
+        ),
+        e('input', {
+          type: 'text', placeholder: 'Seu palpite...',
+          value: guessInput, onChange: ev => setGuessInput(ev.target.value),
+          onKeyDown: ev => { if (ev.key === 'Enter' && guessInput.trim()) submitGuess(guessInput); },
+          style: { ...inputStyle }
+        }),
+        e('div', { style: { display: 'flex', gap: 10, width: '100%' } },
+          e(Btn, { ghost: true, onClick: passTurn }, 'Passar vez'),
+          e(Btn, { onClick: () => guessInput.trim() && submitGuess(guessInput), disabled: !guessInput.trim(), style: { background: '#e06080', color: '#fff' } }, 'Enviar →')
+        )
+      )
+    );
+  }
+
+  if (phase === P.GUESSED) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: roseBg } }),
+    e(Screen, null,
+      e('div', { style: { ...sh.wordBox, background: '#0f060a', borderColor: '#3a0a1a', flexDirection: 'column', gap: 8 } },
+        e('span', { style: { fontSize: 36 } }, '🎉'),
+        e('p', { style: { color: '#f0a0b8', fontSize: 16, fontWeight: 500 } }, playerNames[roundWinner] + ' acertou!'),
+        e('p', { style: { color: '#e8e2d9', fontSize: 32, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, secretWord),
+        e('p', { style: { color: '#c06080', fontSize: 13 } }, '+' + pointsForHint(currentHint) + ' pontos (Dica ' + (currentHint+1) + ')')
+      ),
+      e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '0 4px' } },
+        ...scores.map((s, ti) => e('div', { key: ti, style: { textAlign: 'center' } },
+          e('p', { style: { color: '#c06080', fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 4 } }, playerNames[ti]),
+          e('p', { style: { color: '#e8e2d9', fontSize: 24, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, s + ' pts')
+        ))
+      ),
+      e(Btn, { onClick: nextRound, style: { background: '#e06080', color: '#fff' } }, 'Próxima rodada →'),
+      e(Btn, { ghost: true, onClick: onBack }, 'Sair')
+    )
+  );
+
+  if (phase === P.REVEAL) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: roseBg } }),
+    e(Screen, null,
+      e('p', { style: sh.eyebrow }, 'Ninguém acertou!'),
+      e('div', { style: { ...sh.wordBox, background: '#0f060a', borderColor: '#3a0a1a', flexDirection: 'column', gap: 8 } },
+        e('p', { style: { color: '#6a3048', fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase' } }, 'A resposta era'),
+        e('p', { style: { color: '#f0a0b8', fontSize: 36, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, secretWord)
+      ),
+      e(Btn, { onClick: nextRound, style: { background: '#e06080', color: '#fff' } }, 'Próxima rodada →'),
+      e(Btn, { ghost: true, onClick: onBack }, 'Sair')
+    )
+  );
+
+  return null;
+}
+
 // ── HUB ───────────────────────────────────────────────
 const GAMES = [
   { id: 'impostor', name: 'Impostor', dot: '.', dotColor: '#c9a96e', nameColor: '#e8e2d9', emoji: '🕵️', desc: 'Um jogador recebe uma palavra diferente — descubra quem é o impostor', tags: ['dedução', 'blefe'] },
   { id: 'age',      name: 'Idade',    dot: '.', dotColor: '#4a9fd4', nameColor: '#a8d4f5', emoji: '🎂', desc: 'Cada um recebe uma idade secreta — façam perguntas e descubram!',  tags: ['perguntas', 'dedução'] },
   { id: 'score',    name: 'Notas',    dot: '.', dotColor: '#4ab84a', nameColor: '#a0e0a0', emoji: '🎰', desc: 'Gire a roleta, receba uma nota e faça os outros descobrirem qual é!', tags: ['roleta', 'atuação'] },
+  { id: 'mimica',   name: 'Mímica',   dot: '.', dotColor: '#e07040', nameColor: '#f0b090', emoji: '🎭', desc: 'Times se revezam fazendo mímicas — quem acertar mais palavras vence!', tags: ['times', 'ação'] },
+  { id: 'quemsoueu',name: 'Quem Sou Eu', dot: '?', dotColor: '#a070e0', nameColor: '#d0b0f0', emoji: '🎭', desc: 'Cada um tem uma identidade secreta — faça perguntas de sim/não para descobrir quem você é!', tags: ['dedução', 'perguntas'] },
+  { id: 'destino',  name: 'O Próximo Destino', dot: '.', dotColor: '#e06080', nameColor: '#f0a0b8', emoji: '💌', desc: 'Jogo assíncrono para casais — descubra a palavra com menos dicas possível!', tags: ['casal', 'assíncrono'] },
 ];
 
 function Hub() {
