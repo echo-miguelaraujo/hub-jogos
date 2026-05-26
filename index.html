@@ -888,11 +888,13 @@ function MimicaGame({ numPlayers, onBack }) {
     )
   );
 
-  if (phase === P.SETUP_TEAMS && teams.length >= 2) return e('div', { style: sh.gameRoot },
+  if (phase === P.SETUP_TEAMS) return e('div', { style: sh.gameRoot },
     e('div', { style: { ...sh.bg, background: orangeBg } }),
     e(Screen, null,
       e('p', { style: sh.eyebrow }, 'Divisão dos times'),
-      e('div', { style: { width: '100%', display: 'flex', flexDirection: 'column', gap: 12 } },
+      teams.length < 2
+        ? e('div', { style: sh.loadingBox }, e('span', { style: sh.loadingDot }), e('span', { style: sh.loadingText }, 'Dividindo times...'))
+        : e('div', { style: { width: '100%', display: 'flex', flexDirection: 'column', gap: 12 } },
         teams.map((team, ti) => e('div', { key: ti, style: { background: '#111', border: '1px solid #1e1e1e', borderRadius: 6, padding: '16px' } },
           e('p', { style: { color: teamColors[ti], fontSize: 12, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 10 } }, teamNames[ti]),
           e('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
