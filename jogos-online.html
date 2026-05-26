@@ -1,0 +1,1582 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>jogos.</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { min-height: 100vh; background: #0a0a0a; }
+    body { font-family: 'DM Sans', 'Helvetica Neue', sans-serif; -webkit-font-smoothing: antialiased; }
+    button { cursor: pointer; font-family: inherit; }
+    textarea { font-family: inherit; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
+const { useState, useEffect, useRef } = React;
+
+// ── UTILS ──────────────────────────────────────────────
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function playerLabel(i) { return 'Jogador ' + (i + 1); }
+
+// ── SHARED UI ──────────────────────────────────────────
+function Screen({ children }) {
+  return React.createElement('div', { style: sh.screen }, children);
+}
+function Tag({ children, color }) {
+  return React.createElement('div', {
+    style: { ...sh.tag, color: color || '#c9a96e', borderColor: color ? color + '44' : '#2a2a2a' }
+  }, children);
+}
+function Btn({ children, onClick, disabled, ghost, style: extra }) {
+  return React.createElement('button', {
+    style: { ...(ghost ? sh.ghostBtn : sh.btn), opacity: disabled ? 0.35 : 1, ...extra },
+    onClick, disabled
+  }, children);
+}
+function CountdownRing({ countdown, total, color }) {
+  const pct = total > 0 ? (countdown / total) * 163 : 0;
+  return React.createElement('div', { style: sh.countdownRing },
+    React.createElement('svg', { width: 64, height: 64, viewBox: '0 0 64 64' },
+      React.createElement('circle', { cx: 32, cy: 32, r: 26, fill: 'none', stroke: '#1a1a1a', strokeWidth: 3 }),
+      React.createElement('circle', { cx: 32, cy: 32, r: 26, fill: 'none',
+        stroke: color || '#e8e2d9', strokeWidth: 3,
+        strokeDasharray: pct + ' 163',
+        strokeLinecap: 'round', transform: 'rotate(-90 32 32)',
+        style: { transition: 'stroke-dasharray 0.9s linear' }
+      })
+    ),
+    React.createElement('span', { style: sh.countdownNum }, countdown)
+  );
+}
+function RuleRow({ icon, text }) {
+  return React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 12 } },
+    React.createElement('span', { style: { fontSize: 18, flexShrink: 0, marginTop: 1 } }, icon),
+    React.createElement('span', { style: { color: '#666', fontSize: 13, lineHeight: '1.6' } }, text)
+  );
+}
+
+// ── IMPOSTOR DATA ──────────────────────────────────────
+const BASE_PAIRS = [
+  { category: 'Comida', words: ['Pizza', 'Lasanha'], hint: 'Fale sobre sabor, textura ou onde costuma comer' },
+  { category: 'Comida', words: ['Hambúrguer', 'Sanduíche'], hint: 'Fale sobre ingredientes, tamanho ou onde pedir' },
+  { category: 'Comida', words: ['Café', 'Chá'], hint: 'Fale sobre o ritual de tomar, o cheiro ou o momento do dia' },
+  { category: 'Comida', words: ['Churrasco', 'Feijoada'], hint: 'Fale sobre a ocasião, quem faz ou os acompanhamentos' },
+  { category: 'Comida', words: ['Sushi', 'Temaki'], hint: 'Fale sobre ingredientes, apresentação ou onde comer' },
+  { category: 'Comida', words: ['Sorvete', 'Mousse'], hint: 'Fale sobre sabores favoritos, temperatura ou textura' },
+  { category: 'Comida', words: ['Tapioca', 'Crepe'], hint: 'Fale sobre recheios, onde costuma comer e a textura' },
+  { category: 'Lugar', words: ['Praia', 'Piscina'], hint: 'Fale sobre o que se faz lá, o ambiente ou como você se sente' },
+  { category: 'Lugar', words: ['Escola', 'Igreja'], hint: 'Fale sobre o ambiente, as pessoas ou o que acontece lá' },
+  { category: 'Lugar', words: ['Cinema', 'Teatro'], hint: 'Fale sobre a experiência, o ambiente ou o que você vê' },
+  { category: 'Lugar', words: ['Academia', 'Parque'], hint: 'Fale sobre o que se faz lá, a frequência ou a sensação' },
+  { category: 'Lugar', words: ['Aeroporto', 'Rodoviária'], hint: 'Fale sobre a movimentação, o que acontece lá ou a espera' },
+  { category: 'Lugar', words: ['Shopping', 'Mercado'], hint: 'Fale sobre o movimento, o que tem lá ou para que serve' },
+  { category: 'Lugar', words: ['Hospital', 'UPA'], hint: 'Fale sobre o ambiente, por que as pessoas vão ou como é esperar' },
+  { category: 'Celebridade', words: ['Michael Jackson', 'Elvis Presley'], hint: 'Fale sobre o impacto na música, o estilo ou a fama' },
+  { category: 'Celebridade', words: ['Barack Obama', 'Donald Trump'], hint: 'Fale sobre a política, o discurso ou a presença pública' },
+  { category: 'Celebridade', words: ['Pelé', 'Ronaldo'], hint: 'Fale sobre os títulos, a carreira ou o legado no esporte' },
+  { category: 'Celebridade', words: ['Elon Musk', 'Bill Gates'], hint: 'Fale sobre as empresas, as ideias ou a influência' },
+  { category: 'Celebridade', words: ['Neymar', 'Mbappé'], hint: 'Fale sobre o estilo de jogo, os gols ou os clubes' },
+  { category: 'Celebridade', words: ['Madonna', 'Beyoncé'], hint: 'Fale sobre os shows, o impacto cultural ou as músicas' },
+  { category: 'Animal', words: ['Leão', 'Tigre'], hint: 'Fale sobre onde vive, o que come ou o comportamento' },
+  { category: 'Animal', words: ['Gato', 'Cachorro'], hint: 'Fale sobre o comportamento, o que ele faz em casa ou o jeito' },
+  { category: 'Animal', words: ['Tubarão', 'Baleia'], hint: 'Fale sobre o tamanho, onde vive ou como se move' },
+  { category: 'Animal', words: ['Elefante', 'Hipopótamo'], hint: 'Fale sobre o tamanho, onde vive ou como se comporta' },
+  { category: 'Animal', words: ['Cavalo', 'Zebra'], hint: 'Fale sobre o movimento, onde é visto ou para que serve' },
+  { category: 'Animal', words: ['Águia', 'Falcão'], hint: 'Fale sobre o voo, a visão ou onde costuma ser visto' },
+  { category: 'Esporte', words: ['Futebol', 'Futsal'], hint: 'Fale sobre as regras, como se joga ou onde é praticado' },
+  { category: 'Esporte', words: ['Basquete', 'Vôlei'], hint: 'Fale sobre o time, as jogadas ou a dinâmica' },
+  { category: 'Esporte', words: ['Boxe', 'MMA'], hint: 'Fale sobre a luta, a preparação ou a intensidade' },
+  { category: 'Esporte', words: ['Surfe', 'Wakeboard'], hint: 'Fale sobre as ondas, o equilíbrio ou a sensação' },
+  { category: 'Esporte', words: ['Tênis', 'Badminton'], hint: 'Fale sobre a raquete, o ritmo ou onde se joga' },
+  { category: 'Esporte', words: ['Natação', 'Polo Aquático'], hint: 'Fale sobre o ambiente, o esforço ou a técnica' },
+  { category: 'Tecnologia', words: ['WhatsApp', 'Telegram'], hint: 'Fale sobre o uso, as funcionalidades ou quem usa' },
+  { category: 'Tecnologia', words: ['Netflix', 'Disney+'], hint: 'Fale sobre o conteúdo, o hábito de assistir ou os preços' },
+  { category: 'Tecnologia', words: ['Instagram', 'TikTok'], hint: 'Fale sobre o tipo de conteúdo, o tempo gasto ou o público' },
+  { category: 'Tecnologia', words: ['PlayStation', 'Xbox'], hint: 'Fale sobre os jogos, o controle ou a experiência' },
+  { category: 'Tecnologia', words: ['iPhone', 'Samsung Galaxy'], hint: 'Fale sobre o design, as funções ou o preço' },
+  { category: 'Tecnologia', words: ['Spotify', 'Deezer'], hint: 'Fale sobre as playlists, o uso diário ou a biblioteca' },
+  { category: 'Personagem', words: ['Batman', 'Superman'], hint: 'Fale sobre os poderes, a história ou os filmes' },
+  { category: 'Personagem', words: ['Harry Potter', 'Hermione Granger'], hint: 'Fale sobre os poderes, a personalidade ou as aventuras' },
+  { category: 'Personagem', words: ['Darth Vader', 'Thanos'], hint: 'Fale sobre o poder, a motivação ou o impacto' },
+  { category: 'Personagem', words: ['Capitão América', 'Thor'], hint: 'Fale sobre os poderes, a origem ou os filmes' },
+  { category: 'Personagem', words: ['Coringa', 'Lex Luthor'], hint: 'Fale sobre a vilania, o plano ou a personalidade' },
+  { category: 'Veículo', words: ['Avião', 'Helicóptero'], hint: 'Fale sobre como voa, para que serve ou a experiência' },
+  { category: 'Veículo', words: ['Moto', 'Bicicleta'], hint: 'Fale sobre a sensação de andar, o uso ou o risco' },
+  { category: 'Veículo', words: ['Metrô', 'Trem'], hint: 'Fale sobre o uso, a movimentação ou a experiência' },
+  { category: 'Veículo', words: ['Carro', 'SUV'], hint: 'Fale sobre o conforto, o uso ou o tamanho' },
+  { category: 'Veículo', words: ['Lancha', 'Veleiro'], hint: 'Fale sobre onde anda, a velocidade ou a sensação' },
+  { category: 'Profissão', words: ['Médico', 'Dentista'], hint: 'Fale sobre o que faz, onde trabalha ou como as pessoas se sentem' },
+  { category: 'Profissão', words: ['Professor', 'Tutor'], hint: 'Fale sobre o ensino, o ambiente ou a relação com o aluno' },
+  { category: 'Profissão', words: ['Bombeiro', 'Policial'], hint: 'Fale sobre o risco, o uniforme ou o que faz' },
+  { category: 'Profissão', words: ['Ator', 'Cantor'], hint: 'Fale sobre as apresentações, a fama ou o talento' },
+  { category: 'Profissão', words: ['Chef', 'Confeiteiro'], hint: 'Fale sobre o que cria, o ambiente ou a habilidade' },
+  { category: 'Objeto', words: ['Guitarra', 'Violão'], hint: 'Fale sobre o som, como se toca ou quem usa' },
+  { category: 'Objeto', words: ['Cadeira', 'Banco'], hint: 'Fale sobre onde está, o conforto ou para que serve' },
+  { category: 'Objeto', words: ['Mochila', 'Bolsa'], hint: 'Fale sobre o que carrega, quem usa ou o tamanho' },
+  { category: 'Objeto', words: ['Caneta', 'Lápis'], hint: 'Fale sobre o uso, quem usa ou o que escreve' },
+  { category: 'Objeto', words: ['Espelho', 'Janela'], hint: 'Fale sobre onde fica, para que serve ou o que reflete' },
+  { category: 'Data / Festa', words: ['Natal', 'Ano Novo'], hint: 'Fale sobre o que se faz, quem reúne ou as tradições' },
+  { category: 'Data / Festa', words: ['Carnaval', 'Réveillon'], hint: 'Fale sobre a festa, o ambiente ou as tradições' },
+  { category: 'Data / Festa', words: ['Aniversário', 'Casamento'], hint: 'Fale sobre a celebração, os convidados ou as tradições' },
+  { category: 'Data / Festa', words: ['Páscoa', 'Dia das Crianças'], hint: 'Fale sobre os presentes, as tradições ou quem participa' },
+  { category: 'Natureza', words: ['Chuva', 'Tempestade'], hint: 'Fale sobre a sensação, o som ou o que causa' },
+  { category: 'Natureza', words: ['Rio', 'Lago'], hint: 'Fale sobre o movimento, o que tem lá ou como é visitar' },
+  { category: 'Natureza', words: ['Floresta', 'Mata'], hint: 'Fale sobre os animais, o ambiente ou a vegetação' },
+  { category: 'Natureza', words: ['Sol', 'Lua'], hint: 'Fale sobre a luz, o horário ou o que representa' },
+  { category: 'Natureza', words: ['Montanha', 'Colina'], hint: 'Fale sobre a altura, a paisagem ou a dificuldade' },
+];
+
+const CAT_ICONS = {
+  'Comida':'🍽️','Lugar':'📍','Celebridade':'⭐','Animal':'🐾','Esporte':'🏆',
+  'Tecnologia':'💻','Personagem':'🎭','Veículo':'🚗','Profissão':'💼',
+  'Objeto':'🎲','Data / Festa':'🎉','Natureza':'🌿',
+};
+
+async function generateImpostorPairs(usedKeys) {
+  const usedStr = usedKeys.length > 0 ? 'Pares já usados (NÃO repita): ' + usedKeys.join(', ') + '.' : '';
+  const prompt = 'Você é um gerador de pares de palavras para o jogo Impostor.\nRegras: a maioria recebe a mesma palavra, 1 recebe uma DIFERENTE mas relacionada ao mesmo tema.\n' + usedStr + '\nGere EXATAMENTE 15 pares em português brasileiro, categorias VARIADAS e CRIATIVAS.\nResponda SOMENTE JSON válido, sem markdown:\n[{"category":"...","words":["A","B"],"hint":"Dica curta de como falar sem entregar a palavra"},...]';
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, messages: [{ role: 'user', content: prompt }] }),
+  });
+  const data = await res.json();
+  const text = (data.content || []).find(b => b.type === 'text')?.text || '[]';
+  return JSON.parse(text.replace(/```json|```/g, '').trim());
+}
+
+// ── IMPOSTOR GAME ─────────────────────────────────────
+function ImpostorGame({ numPlayers, onBack }) {
+  const IP = { IDLE:'idle', MODE:'mode', CATEGORY:'cat', REVEAL:'reveal', SHOWN:'shown', DONE:'done' };
+  const [mode, setMode] = useState(null);
+  const [round, setRound] = useState(null);
+  const [cur, setCur] = useState(0);
+  const [phase, setPhase] = useState(IP.IDLE);
+  const [countdown, setCountdown] = useState(null);
+  const [totalCD, setTotalCD] = useState(4);
+  const [loading, setLoading] = useState(false);
+  const deckRef = useRef(shuffle(BASE_PAIRS));
+  const usedRef = useRef([]);
+  const roundNumRef = useRef(0);
+  const prefRef = useRef(false);
+
+  const maybePrefetch = async () => {
+    if (prefRef.current || deckRef.current.length >= 8) return;
+    prefRef.current = true;
+    try {
+      const keys = usedRef.current.map(p => p.words[0] + '/' + p.words[1]);
+      const fresh = await generateImpostorPairs(keys);
+      const existing = new Set([...deckRef.current, ...usedRef.current].map(p => p.words[0] + '/' + p.words[1]));
+      deckRef.current = [...deckRef.current, ...shuffle(fresh.filter(p => !existing.has(p.words[0] + '/' + p.words[1])))];
+    } catch(e) {}
+    prefRef.current = false;
+  };
+
+  const pickNext = () => {
+    if (deckRef.current.length === 0) {
+      const recycle = usedRef.current.splice(0, Math.max(0, usedRef.current.length - 20));
+      deckRef.current = shuffle(recycle);
+    }
+    const entry = deckRef.current.shift();
+    usedRef.current.push(entry);
+    if (usedRef.current.length > 20) usedRef.current.shift();
+    return entry;
+  };
+
+  const buildRound = (m) => {
+    const entry = pickNext();
+    const [a, b] = entry.words;
+    const [majority, minority] = Math.random() < 0.5 ? [a, b] : [b, a];
+    const impostorIdx = Math.floor(Math.random() * numPlayers);
+    const speakerIdx = Math.floor(Math.random() * numPlayers);
+    let words = Array(numPlayers).fill(majority);
+    if (m === 'classic') words[impostorIdx] = minority;
+    else words[impostorIdx] = '__IMPOSTOR__';
+    roundNumRef.current += 1;
+    return { words, category: entry.category, hint: entry.hint, impostorIdx, speakerIdx };
+  };
+
+  const startGame = async () => {
+    setLoading(true);
+    if (deckRef.current.length < 3) {
+      try {
+        const keys = usedRef.current.map(p => p.words[0] + '/' + p.words[1]);
+        const fresh = await generateImpostorPairs(keys);
+        const existing = new Set([...deckRef.current, ...usedRef.current].map(p => p.words[0] + '/' + p.words[1]));
+        deckRef.current = [...deckRef.current, ...shuffle(fresh.filter(p => !existing.has(p.words[0] + '/' + p.words[1])))];
+      } catch(e) {}
+    }
+    setRound(buildRound(mode));
+    setCur(0); setPhase(IP.CATEGORY); setLoading(false);
+    maybePrefetch();
+  };
+
+  const showWord = () => {
+    const imp = round?.words[cur] === '__IMPOSTOR__';
+    const first = round?.speakerIdx === cur;
+    const secs = imp ? (first ? 7 : 5) : 4;
+    setTotalCD(secs); setCountdown(secs); setPhase(IP.SHOWN);
+  };
+
+  useEffect(() => {
+    if (phase !== IP.SHOWN || countdown === null) return;
+    if (countdown <= 0) {
+      if (cur < numPlayers - 1) { setCur(p => p + 1); setPhase(IP.REVEAL); setCountdown(null); }
+      else { setPhase(IP.DONE); setCountdown(null); }
+      return;
+    }
+    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [phase, countdown, cur]);
+
+  const resetGame = () => { setRound(null); setMode(null); setCur(0); setPhase(IP.IDLE); setCountdown(null); };
+  const isImp = round?.words[cur] === '__IMPOSTOR__';
+  const showHint = isImp && round?.speakerIdx === cur;
+
+  const e = React.createElement;
+
+  if (phase === IP.IDLE) return e('div', { style: sh.gameRoot },
+    e('div', { style: sh.bg }),
+    e(Screen, null,
+      e('div', { style: sh.gameHeader },
+        e('button', { style: sh.backBtn, onClick: onBack }, '← Hub'),
+        e('div', { style: sh.gameTitleSmall }, 'impostor', e('span', { style: sh.gameTitleDot }, '.'))
+      ),
+      e('p', { style: sh.eyebrow }, numPlayers + ' jogadores · 1 impostor'),
+      e('p', { style: sh.eyebrow }, 'Escolha o modo'),
+      e('div', { style: sh.modeGrid },
+        e('button', { style: sh.modeCard, onClick: () => { setMode('classic'); setPhase(IP.MODE); } },
+          e('span', { style: sh.modeEmoji }, '🃏'),
+          e('span', { style: sh.modeName }, 'Clássico'),
+          e('span', { style: sh.modeDesc }, 'Todos recebem uma palavra — o impostor recebe a diferente')
+        ),
+        e('button', { style: sh.modeCard, onClick: () => { setMode('blind'); setPhase(IP.MODE); } },
+          e('span', { style: sh.modeEmoji }, '🕵️'),
+          e('span', { style: sh.modeName }, 'Impostor Cego'),
+          e('span', { style: sh.modeDesc }, 'O impostor sabe que é o impostor, mas não sabe a palavra')
+        )
+      )
+    )
+  );
+
+  if (phase === IP.MODE) return e('div', { style: sh.gameRoot },
+    e('div', { style: sh.bg }),
+    e(Screen, null,
+      e('div', { style: sh.gameHeader },
+        e('button', { style: sh.backBtn, onClick: resetGame }, '← Voltar')
+      ),
+      e('div', { style: { fontSize: 56 } }, mode === 'classic' ? '🃏' : '🕵️'),
+      e('p', { style: sh.modeConfirmName }, 'Modo ' + (mode === 'classic' ? 'Clássico' : 'Impostor Cego')),
+      e('p', { style: sh.instruction },
+        mode === 'classic'
+          ? 'Todos recebem uma palavra — mas um deles recebe a diferente. Descubram quem é o impostor!'
+          : (numPlayers - 1) + ' jogadores recebem a mesma palavra. O restante sabe que é o impostor, mas não sabe a palavra!'
+      ),
+      loading
+        ? e('div', { style: sh.loadingBox }, e('span', { style: sh.loadingDot }), e('span', { style: sh.loadingText }, 'Gerando palavras...'))
+        : e(Btn, { onClick: startGame }, 'Iniciar jogo')
+    )
+  );
+
+  if (phase === IP.CATEGORY && round) return e('div', { style: sh.gameRoot },
+    e('div', { style: sh.bg }),
+    e(Screen, null,
+      e('div', { style: sh.roundBadge }, 'Rodada ' + roundNumRef.current),
+      e('p', { style: sh.eyebrow }, 'Tema da rodada'),
+      e('div', { style: sh.categoryBox },
+        e('span', { style: { fontSize: 48 } }, CAT_ICONS[round.category] || '🎯'),
+        e('span', { style: sh.categoryText }, round.category)
+      ),
+      e('p', { style: sh.instruction }, 'Todos podem ver o tema — mas um de vocês é o impostor!'),
+      e(Btn, { onClick: () => setPhase(IP.REVEAL) }, 'Começar revelação')
+    )
+  );
+
+  if (phase === IP.REVEAL) return e('div', { style: sh.gameRoot },
+    e('div', { style: sh.bg }),
+    e(Screen, null,
+      e(Tag, null, playerLabel(cur)),
+      e('div', { style: sh.themePill },
+        e('span', null, CAT_ICONS[round.category] || '🎯'),
+        e('span', { style: sh.themePillText }, round.category)
+      ),
+      e('p', { style: sh.instruction }, 'Segure o celular sozinho e toque para ver sua informação'),
+      e('button', { style: sh.bigBtn, onClick: showWord }, 'Ver palavra')
+    )
+  );
+
+  if (phase === IP.SHOWN) return e('div', { style: sh.gameRoot },
+    e('div', { style: sh.bg }),
+    e(Screen, null,
+      e(Tag, null, playerLabel(cur)),
+      isImp
+        ? e('div', { style: sh.impostorBox },
+            e('span', { style: { fontSize: 32 } }, '🕵️'),
+            e('span', { style: sh.impostorLabel }, 'Você é o'),
+            e('span', { style: sh.impostorWord }, 'IMPOSTOR'),
+            showHint
+              ? e('div', { style: sh.hintBox },
+                  e('span', { style: sh.hintLabel }, '💡 Dica para começar'),
+                  e('span', { style: sh.hintText }, round.hint)
+                )
+              : e('span', { style: sh.impostorSubhint }, 'Finja que sabe e não seja pego!')
+          )
+        : e('div', { style: sh.wordBox }, e('span', { style: sh.wordText }, round.words[cur])),
+      e(CountdownRing, { countdown, total: totalCD, color: isImp ? '#7c3f3f' : '#e8e2d9' }),
+      e('p', { style: sh.hint }, isImp ? 'Memorize. Ninguém pode saber.' : 'A palavra desaparecerá em breve')
+    )
+  );
+
+  if (phase === IP.DONE) return e('div', { style: sh.gameRoot },
+    e('div', { style: sh.bg }),
+    e(Screen, null,
+      e('div', { style: sh.gameTitleSmall }, 'impostor', e('span', { style: sh.gameTitleDot }, '.')),
+      e('div', { style: sh.themePill },
+        e('span', null, CAT_ICONS[round.category] || '🎯'),
+        e('span', { style: sh.themePillText }, round.category)
+      ),
+      e('div', { style: sh.speakerBox },
+        e('p', { style: sh.speakerEyebrow }, 'Começa falando'),
+        e('p', { style: sh.speakerName }, playerLabel(round.speakerIdx)),
+        e('p', { style: sh.speakerSub }, 'Os outros podem falar em qualquer ordem depois')
+      ),
+      e(Btn, { onClick: () => { setRound(null); setCur(0); setPhase(IP.MODE); } }, 'Jogar novamente'),
+      e(Btn, { ghost: true, onClick: onBack }, 'Menu do hub')
+    )
+  );
+
+  return null;
+}
+
+// ── JOGO DA IDADE ─────────────────────────────────────
+function AgeGame({ numPlayers, onBack }) {
+  const AP = { IDLE:'idle', REVEAL:'reveal', SHOWN:'shown', DONE:'done' };
+  const [phase, setPhase] = useState(AP.IDLE);
+  const [ages, setAges] = useState([]);
+  const [cur, setCur] = useState(0);
+  const [countdown, setCountdown] = useState(null);
+
+  const generateAges = () => {
+    const pool = [];
+    while (pool.length < numPlayers) {
+      const age = Math.floor(Math.random() * 95) + 5;
+      if (!pool.includes(age)) pool.push(age);
+    }
+    return pool;
+  };
+
+  const startGame = () => { setAges(generateAges()); setCur(0); setPhase(AP.REVEAL); };
+  const showAge = () => { setCountdown(4); setPhase(AP.SHOWN); };
+
+  useEffect(() => {
+    if (phase !== AP.SHOWN || countdown === null) return;
+    if (countdown <= 0) {
+      if (cur < numPlayers - 1) { setCur(p => p + 1); setPhase(AP.REVEAL); setCountdown(null); }
+      else { setPhase(AP.DONE); setCountdown(null); }
+      return;
+    }
+    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [phase, countdown, cur]);
+
+  const blueBg = 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(100,160,232,0.06) 0%, transparent 70%)';
+  const e = React.createElement;
+
+  if (phase === AP.IDLE) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: blueBg } }),
+    e(Screen, null,
+      e('div', { style: sh.gameHeader },
+        e('button', { style: sh.backBtn, onClick: onBack }, '← Hub'),
+        e('div', { style: { ...sh.gameTitleSmall, color: '#a8d4f5' } }, 'idade', e('span', { style: { ...sh.gameTitleDot, color: '#4a9fd4' } }, '.'))
+      ),
+      e('p', { style: sh.eyebrow }, numPlayers + ' jogadores'),
+      e('div', { style: sh.ruleCard },
+        e(RuleRow, { icon: '🎂', text: 'Cada jogador recebe uma idade secreta' }),
+        e(RuleRow, { icon: '💬', text: 'Façam perguntas uns aos outros para descobrir a idade' }),
+        e(RuleRow, { icon: '🎯', text: 'Quem acertar a idade do outro vence!' })
+      ),
+      e(Btn, { onClick: startGame, style: { background: '#4a9fd4', color: '#0f0f0f' } }, 'Começar')
+    )
+  );
+
+  if (phase === AP.REVEAL) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: blueBg } }),
+    e(Screen, null,
+      e(Tag, { color: '#4a9fd4' }, playerLabel(cur)),
+      e('p', { style: sh.instruction }, 'Segure o celular sozinho e toque para ver sua idade secreta'),
+      e('button', { style: { ...sh.bigBtn, borderColor: '#1a3a5a' }, onClick: showAge }, 'Ver minha idade')
+    )
+  );
+
+  if (phase === AP.SHOWN) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: blueBg } }),
+    e(Screen, null,
+      e(Tag, { color: '#4a9fd4' }, playerLabel(cur)),
+      e('div', { style: { ...sh.wordBox, background: '#060e18', borderColor: '#0d2a45', flexDirection: 'column', gap: 4 } },
+        e('span', { style: { color: '#4a9fd4', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase' } }, 'sua idade é'),
+        e('span', { style: { ...sh.wordText, fontSize: 'clamp(52px,14vw,80px)', color: '#a8d4f5', letterSpacing: -2 } }, ages[cur]),
+        e('span', { style: { color: '#1a4a6a', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' } }, 'anos')
+      ),
+      e(CountdownRing, { countdown, total: 4, color: '#4a9fd4' }),
+      e('p', { style: sh.hint }, 'A idade desaparecerá em breve')
+    )
+  );
+
+  if (phase === AP.DONE) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: blueBg } }),
+    e(Screen, null,
+      e('div', { style: { ...sh.gameTitleSmall, color: '#a8d4f5' } }, 'idade', e('span', { style: { ...sh.gameTitleDot, color: '#4a9fd4' } }, '.')),
+      e('p', { style: sh.instruction }, 'Todos receberam suas idades. Agora façam perguntas e tentem descobrir a idade uns dos outros!'),
+      e('div', { style: { ...sh.ruleCard, borderColor: '#0d2a45' } },
+        e(RuleRow, { icon: '❓', text: 'Façam perguntas como "você já foi à escola?" ou "você dirige?"' }),
+        e(RuleRow, { icon: '🚫', text: 'Não pode perguntar a idade diretamente!' }),
+        e(RuleRow, { icon: '🏆', text: 'Quem acertar a idade exata do outro vence' })
+      ),
+      e(Btn, { onClick: startGame, style: { background: '#4a9fd4', color: '#0f0f0f' } }, 'Jogar novamente'),
+      e(Btn, { ghost: true, onClick: onBack }, 'Menu do hub')
+    )
+  );
+
+  return null;
+}
+
+// ── JOGO DAS NOTAS ────────────────────────────────────
+const SCORE_DESCS = {
+  0:  { label: 'Zero absoluto',    emoji: '💀', desc: 'Pior que o pior. Nem tenta.' },
+  1:  { label: 'Catastrófico',     emoji: '🤮', desc: 'Quase impossível de ser tão ruim.' },
+  2:  { label: 'Muito ruim',       emoji: '😱', desc: 'Deu muito errado.' },
+  3:  { label: 'Ruim',             emoji: '😣', desc: 'Abaixo do esperado.' },
+  4:  { label: 'Fraco',            emoji: '😕', desc: 'Faltou bastante.' },
+  5:  { label: 'Mediano',          emoji: '😐', desc: 'Nem bom nem ruim. Na média.' },
+  6:  { label: 'Razoável',         emoji: '🙂', desc: 'Ok, mas pode melhorar.' },
+  7:  { label: 'Bom',              emoji: '😊', desc: 'Acima da média. Vai bem.' },
+  8:  { label: 'Muito bom',        emoji: '😄', desc: 'Quase excelente. Impressiona.' },
+  9:  { label: 'Excepcional',      emoji: '🤩', desc: 'Raro. Quase perfeito.' },
+  10: { label: 'Perfeito',         emoji: '🏆', desc: 'Máximo absoluto. Lendário.' },
+};
+
+function ScoreWheel({ onDone }) {
+  const [spinning, setSpinning] = useState(false);
+  const [angle, setAngle] = useState(0);
+  const [result, setResult] = useState(null);
+  const [visible, setVisible] = useState(false);
+  const [countdown, setCountdown] = useState(null);
+  const rafRef = useRef(null);
+  const startAngleRef = useRef(0);
+  const startTimeRef = useRef(null);
+  const targetAngleRef = useRef(0);
+  const durationRef = useRef(0);
+  const e = React.createElement;
+
+  const SEGMENTS = 11; // 0..10
+  const SEG_DEG = 360 / SEGMENTS;
+
+  const spin = () => {
+    if (spinning || result !== null) return;
+    const score = Math.floor(Math.random() * 11);
+    // Segment i is drawn starting at i*SEG_DEG from top.
+    // Center of segment 'score' is at: score*SEG_DEG + SEG_DEG/2 (in wheel local coords, from top)
+    // To put that center under the top pointer, we rotate the wheel by -(center angle).
+    // normalizedTarget is the final CSS rotation angle (mod 360) we want.
+    const segCenter = score * SEG_DEG + SEG_DEG / 2;
+    const normalizedTarget = ((360 - segCenter) % 360);
+    const currentMod = ((angle % 360) + 360) % 360;
+    const diff = ((normalizedTarget - currentMod) + 360) % 360;
+    const fullSpins = (5 + Math.floor(Math.random() * 3)) * 360;
+    const target = angle + fullSpins + diff;
+    startAngleRef.current = angle;
+    targetAngleRef.current = target;
+    durationRef.current = 2200;
+    startTimeRef.current = null;
+    setSpinning(true);
+
+    const animate = (ts) => {
+      if (!startTimeRef.current) startTimeRef.current = ts;
+      const elapsed = ts - startTimeRef.current;
+      const progress = Math.min(elapsed / durationRef.current, 1);
+      // ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const cur = startAngleRef.current + (targetAngleRef.current - startAngleRef.current) * eased;
+      setAngle(cur);
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(animate);
+      } else {
+        setAngle(targetAngleRef.current);
+        setSpinning(false);
+        setResult(score);
+        setVisible(true);
+        setCountdown(4);
+      }
+    };
+    rafRef.current = requestAnimationFrame(animate);
+  };
+
+  useEffect(() => {
+    if (countdown === null || !visible) return;
+    if (countdown <= 0) { setVisible(false); setTimeout(() => onDone(result), 300); return; }
+    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [countdown, visible]);
+
+  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
+
+  const cx = 140, cy = 140, r = 120;
+  const colors = ['#1a0a0a','#1a1008','#0a1a08','#081018','#160818','#0a0a18','#180808','#081808','#181008','#080818','#0a1810'];
+  const textColors = ['#e05555','#c9903a','#4aaa4a','#4a9fd4','#a04ad4','#4a6ad4','#e05555','#4aaa4a','#c9903a','#a04ad4','#c9a96e'];
+
+  const segments = Array.from({ length: SEGMENTS }, (_, i) => {
+    const startDeg = i * SEG_DEG;
+    const endDeg = startDeg + SEG_DEG;
+    const startRad = (startDeg - 90) * Math.PI / 180;
+    const endRad = (endDeg - 90) * Math.PI / 180;
+    const x1 = cx + r * Math.cos(startRad);
+    const y1 = cy + r * Math.sin(startRad);
+    const x2 = cx + r * Math.cos(endRad);
+    const y2 = cy + r * Math.sin(endRad);
+    const midRad = ((startDeg + endDeg) / 2 - 90) * Math.PI / 180;
+    const tx = cx + (r * 0.68) * Math.cos(midRad);
+    const ty = cy + (r * 0.68) * Math.sin(midRad);
+    const d = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2} Z`;
+    return { i, d, tx, ty };
+  });
+
+  const sd = result !== null ? SCORE_DESCS[result] : null;
+
+  return e('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, width: '100%' } },
+    // Wheel container
+    e('div', { style: { position: 'relative', width: 280, height: 280 } },
+      // Pointer
+      e('div', { style: {
+        position: 'absolute', top: -6, left: '50%', transform: 'translateX(-50%)',
+        width: 0, height: 0,
+        borderLeft: '10px solid transparent', borderRight: '10px solid transparent',
+        borderTop: '20px solid #e8e2d9', zIndex: 10,
+      }}),
+      // SVG wheel
+      e('svg', { width: 280, height: 280, viewBox: '0 0 280 280', style: { transform: 'rotate(' + angle + 'deg)', transition: spinning ? 'none' : 'none', display: 'block' } },
+        // Segments
+        ...segments.map(seg =>
+          e('g', { key: seg.i },
+            e('path', { d: seg.d, fill: colors[seg.i], stroke: '#0a0a0a', strokeWidth: 2 }),
+            e('text', { x: seg.tx, y: seg.ty, textAnchor: 'middle', dominantBaseline: 'middle',
+              fill: textColors[seg.i], fontSize: 16, fontWeight: 600,
+              fontFamily: "'DM Serif Display',Georgia,serif" }, seg.i)
+          )
+        ),
+        // Center circle
+        e('circle', { cx, cy, r: 18, fill: '#0a0a0a', stroke: '#222', strokeWidth: 2 }),
+      ),
+    ),
+
+    // Spin button or result
+    result === null
+      ? e('button', {
+          style: { ...sh.bigBtn, opacity: spinning ? 0.5 : 1, minWidth: 180 },
+          onClick: spin, disabled: spinning
+        }, spinning ? 'Girando...' : '🎰 Girar roleta')
+      : visible
+        ? e('div', { style: { background: '#111', border: '1px solid #222', borderRadius: 6, padding: '20px 28px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: '100%', boxSizing: 'border-box' } },
+            e('span', { style: { fontSize: 32 } }, sd.emoji),
+            e('span', { style: { color: '#555', fontSize: 10, letterSpacing: '3px', textTransform: 'uppercase' } }, 'sua nota é'),
+            e('span', { style: { color: '#e8e2d9', fontSize: 56, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif", lineHeight: 1 } }, result),
+            e('span', { style: { color: textColors[result], fontSize: 13, letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 500 } }, sd.label),
+            e('span', { style: { color: '#555', fontSize: 12, textAlign: 'center', lineHeight: '1.6' } }, sd.desc),
+            e(CountdownRing, { countdown, total: 4, color: textColors[result] }),
+            e('p', { style: sh.hint }, 'A nota desaparecerá em breve')
+          )
+        : null
+  );
+}
+
+function ScoreGame({ numPlayers, onBack }) {
+  const GP = { IDLE:'idle', REVEAL:'reveal', DONE:'done' };
+  const [phase, setPhase] = useState(GP.IDLE);
+  const [cur, setCur] = useState(0);
+  const [scores, setScores] = useState([]);
+  const greenBg = 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(80,180,80,0.05) 0%, transparent 70%)';
+  const e = React.createElement;
+
+  const startGame = () => { setScores([]); setCur(0); setPhase(GP.REVEAL); };
+
+  const handleDone = (score) => {
+    const next = [...scores, score];
+    setScores(next);
+    if (cur < numPlayers - 1) setCur(c => c + 1);
+    else setPhase(GP.DONE);
+  };
+
+  if (phase === GP.IDLE) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: greenBg } }),
+    e(Screen, null,
+      e('div', { style: sh.gameHeader },
+        e('button', { style: sh.backBtn, onClick: onBack }, '← Hub'),
+        e('div', { style: { ...sh.gameTitleSmall, color: '#a0e0a0' } }, 'notas', e('span', { style: { ...sh.gameTitleDot, color: '#4ab84a' } }, '.'))
+      ),
+      e('p', { style: sh.eyebrow }, numPlayers + ' jogadores'),
+      e('div', { style: sh.ruleCard },
+        e(RuleRow, { icon: '🎰', text: 'Cada jogador gira a roleta e recebe uma nota de 0 a 10' }),
+        e(RuleRow, { icon: '🎭', text: 'Aja de acordo com a sua nota sem revelar o número' }),
+        e(RuleRow, { icon: '🔍', text: 'Os outros tentam adivinhar qual é a sua nota' }),
+        e(RuleRow, { icon: '🏆', text: 'Quem acertar a nota exata ou chegar mais perto vence' })
+      ),
+      e(Btn, { onClick: startGame, style: { background: '#4ab84a', color: '#0a0a0a' } }, 'Começar')
+    )
+  );
+
+  if (phase === GP.REVEAL) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: greenBg } }),
+    e(Screen, null,
+      e(Tag, { color: '#4ab84a' }, playerLabel(cur)),
+      e('p', { style: sh.instruction }, 'Segure o celular sozinho e gire a roleta para ver sua nota secreta'),
+      e(ScoreWheel, { key: cur, onDone: handleDone })
+    )
+  );
+
+  if (phase === GP.DONE) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: greenBg } }),
+    e(Screen, null,
+      e('div', { style: { ...sh.gameTitleSmall, color: '#a0e0a0' } }, 'notas', e('span', { style: { ...sh.gameTitleDot, color: '#4ab84a' } }, '.')),
+      e('p', { style: sh.instruction }, 'Todos receberam suas notas! Agora atuem e tentem descobrir a nota uns dos outros.'),
+      e('div', { style: { ...sh.ruleCard, gap: 0, padding: 0, overflow: 'hidden' } },
+        e('div', { style: { padding: '12px 16px', borderBottom: '1px solid #1a1a1a' } },
+          e('span', { style: { color: '#444', fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase' } }, 'Ranking de notas')
+        ),
+        ...scores
+          .map((s, i) => ({ s, i }))
+          .sort((a, b) => b.s - a.s)
+          .map((item, rank) => {
+            const sd = SCORE_DESCS[item.s];
+            const medal = rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : (rank + 1) + 'º';
+            return e('div', { key: item.i, style: { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: rank < scores.length - 1 ? '1px solid #111' : 'none' } },
+              e('span', { style: { fontSize: 16, minWidth: 28 } }, medal),
+              e('span', { style: { color: '#e8e2d9', fontSize: 13, flex: 1 } }, playerLabel(item.i)),
+              e('span', { style: { color: '#555', fontSize: 12 } }, sd.emoji + ' ' + sd.label),
+              e('span', { style: { color: '#e8e2d9', fontSize: 20, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif", minWidth: 28, textAlign: 'right' } }, item.s)
+            );
+          })
+      ),
+      e(Btn, { onClick: startGame, style: { background: '#4ab84a', color: '#0a0a0a' } }, 'Jogar novamente'),
+      e(Btn, { ghost: true, onClick: onBack }, 'Menu do hub')
+    )
+  );
+
+  return null;
+}
+
+// ── HUB ───────────────────────────────────────────────
+const GAMES = [
+  { id: 'impostor', name: 'Impostor', dot: '.', dotColor: '#c9a96e', nameColor: '#e8e2d9', emoji: '🕵️', desc: 'Um jogador recebe uma palavra diferente — descubra quem é o impostor', tags: ['dedução', 'blefe'] },
+  { id: 'age',      name: 'Idade',    dot: '.', dotColor: '#4a9fd4', nameColor: '#a8d4f5', emoji: '🎂', desc: 'Cada um recebe uma idade secreta — façam perguntas e descubram!',  tags: ['perguntas', 'dedução'] },
+  { id: 'score',    name: 'Notas',    dot: '.', dotColor: '#4ab84a', nameColor: '#a0e0a0', emoji: '🎰', desc: 'Gire a roleta, receba uma nota e faça os outros descobrirem qual é!', tags: ['roleta', 'atuação'] },
+];
+
+function Hub() {
+  const [screen, setScreen] = useState('hub');
+  const [selectedGame, setSelectedGame] = useState(null);
+  const [numPlayers, setNumPlayers] = useState(null);
+  const [inputVal, setInputVal] = useState('');
+
+  const selectGame = (g) => { setSelectedGame(g); setNumPlayers(null); setInputVal(''); setScreen('players'); };
+  const goHub = () => { setScreen('hub'); setSelectedGame(null); setNumPlayers(null); setInputVal(''); };
+
+  const handleInputChange = (v) => {
+    const n = v.replace(/\D/g, '');
+    setInputVal(n);
+    setNumPlayers(null);
+  };
+
+  const handleConfirm = () => {
+    const n = parseInt(inputVal, 10);
+    if (!n || n < 2) return;
+    setNumPlayers(n);
+    setScreen(selectedGame.id);
+  };
+
+  const e = React.createElement;
+
+  if (screen === 'impostor' && numPlayers) return e(ImpostorGame, { numPlayers, onBack: goHub });
+  if (screen === 'age'      && numPlayers) return e(AgeGame,      { numPlayers, onBack: goHub });
+  if (screen === 'score'    && numPlayers) return e(ScoreGame,    { numPlayers, onBack: goHub });
+
+  if (screen === 'hub') return e('div', { style: sh.hubRoot },
+    e('div', { style: sh.hubBg }),
+    e('div', { style: sh.hubScreen },
+      e('div', { style: sh.hubHeader },
+        e('div', { style: sh.hubLogo },
+          e('span', { style: sh.hubLogoText }, 'jogos'),
+          e('span', { style: sh.hubLogoDot }, '.')
+        ),
+        e('p', { style: sh.hubSubtitle }, 'Escolha um jogo para começar')
+      ),
+      e('div', { style: sh.gameGrid },
+        ...GAMES.map(g =>
+          e('button', { key: g.id, style: sh.gameCard, onClick: () => selectGame(g) },
+            e('div', { style: sh.gameCardTop },
+              e('span', { style: sh.gameCardEmoji }, g.emoji),
+              e('div', { style: sh.gameCardTags },
+                ...g.tags.map(t => e('span', { key: t, style: sh.gameTag }, t))
+              )
+            ),
+            e('div', { style: sh.gameCardTitle },
+              e('span', { style: { ...sh.gameCardName, color: g.nameColor } }, g.name),
+              e('span', { style: { ...sh.gameCardDot, color: g.dotColor } }, g.dot)
+            ),
+            e('p', { style: sh.gameCardDesc }, g.desc),
+            e('div', { style: sh.gameCardFooter },
+              e('span', { style: sh.gameCardPlayers }, 'qualquer número de jogadores'),
+              e('span', { style: sh.gameCardArrow }, '→')
+            )
+          )
+        ),
+        e('div', { style: sh.gameCardEmpty },
+          e('span', { style: sh.gameCardEmptyPlus }, '+'),
+          e('span', { style: sh.gameCardEmptyText }, 'Em breve')
+        )
+      )
+    )
+  );
+
+  if (screen === 'players' && selectedGame) {
+    const n = parseInt(inputVal, 10);
+    const valid = n >= 2;
+    return e('div', { style: sh.hubRoot },
+      e('div', { style: sh.hubBg }),
+      e('div', { style: { ...sh.hubScreen, gap: 20 } },
+        e('button', { style: sh.backBtn, onClick: goHub }, '← Hub'),
+        e('span', { style: { fontSize: 48 } }, selectedGame.emoji),
+        e('div', { style: sh.hubLogo },
+          e('span', { style: { ...sh.hubLogoText, fontSize: 'clamp(24px,6vw,34px)', color: selectedGame.nameColor } }, selectedGame.name),
+          e('span', { style: { ...sh.hubLogoDot, color: selectedGame.dotColor } }, selectedGame.dot)
+        ),
+        e('p', { style: sh.instruction }, 'Quantos jogadores vão jogar?'),
+        e('div', { style: { display: 'flex', gap: 10, width: '100%', alignItems: 'stretch' } },
+          e('input', {
+            type: 'number', min: 2, placeholder: 'Ex: 4',
+            value: inputVal,
+            onChange: ev => handleInputChange(ev.target.value),
+            style: {
+              flex: 1, background: '#111', border: '1px solid #222', borderRadius: 4,
+              color: '#e8e2d9', fontSize: 28, fontWeight: 300,
+              fontFamily: "'DM Serif Display',Georgia,serif",
+              padding: '16px 20px', outline: 'none', textAlign: 'center',
+              letterSpacing: -1,
+            }
+          }),
+          e('button', {
+            style: { ...sh.btn, width: 'auto', padding: '16px 28px', opacity: valid ? 1 : 0.35, flexShrink: 0 },
+            onClick: handleConfirm, disabled: !valid
+          }, 'Jogar →')
+        ),
+        !valid && inputVal.length > 0
+          ? e('p', { style: { color: '#5a2a2a', fontSize: 12, letterSpacing: '1px', margin: 0 } }, 'Mínimo de 2 jogadores')
+          : null
+      )
+    );
+  }
+
+  return null;
+}
+
+
+// ── FIREBASE CONFIG ────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyDh98vjJcuAHObZUGd6Y5F0RMc8i4GBRG8",
+  authDomain: "hub-jogos.firebaseapp.com",
+  databaseURL: "https://hub-jogos-default-rtdb.firebaseio.com",
+  projectId: "hub-jogos",
+  storageBucket: "hub-jogos.firebasestorage.app",
+  messagingSenderId: "986639865085",
+  appId: "1:986639865085:web:312558109cd96a795b1a94"
+};
+
+// Firebase SDK loaded via CDN (added to <head>)
+let db = null;
+function initFirebase() {
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.database();
+}
+
+function genCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+// ── LOBBY / ONLINE WRAPPER ─────────────────────────────
+function OnlineHub() {
+  const [screen, setScreen] = useState('home'); // home | create | join | waiting | game
+  const [roomCode, setRoomCode] = useState('');
+  const [inputCode, setInputCode] = useState('');
+  const [playerName, setPlayerName] = useState('');
+  const [nameInput, setNameInput] = useState('');
+  const [players, setPlayers] = useState([]);
+  const [isHost, setIsHost] = useState(false);
+  const [myId, setMyId] = useState(null);
+  const [gameState, setGameState] = useState(null);
+  const [selectedGame, setSelectedGame] = useState(null);
+  const [numPlayers, setNumPlayers] = useState(null);
+  const [error, setError] = useState('');
+  const roomRef = useRef(null);
+  const myRef = useRef(null);
+  const e = React.createElement;
+
+  useEffect(() => {
+    if (!db) initFirebase();
+  }, []);
+
+  // Listen to room changes
+  useEffect(() => {
+    if (!roomCode || screen === 'home' || screen === 'create' || screen === 'join') return;
+    const ref = firebase.database().ref('rooms/' + roomCode);
+    roomRef.current = ref;
+    const unsub = ref.on('value', snap => {
+      const data = snap.val();
+      if (!data) return;
+      const plist = Object.entries(data.players || {}).map(([id, p]) => ({ id, ...p }));
+      setPlayers(plist);
+      if (data.gameState) setGameState(data.gameState);
+    });
+    return () => ref.off('value', unsub);
+  }, [roomCode, screen]);
+
+  // Cleanup on leave
+  useEffect(() => {
+    return () => {
+      if (myRef.current) myRef.current.remove();
+    };
+  }, []);
+
+  const createRoom = async () => {
+    if (!nameInput.trim()) { setError('Digite seu nome'); return; }
+    const code = genCode();
+    const id = 'p_' + Date.now();
+    const player = { name: nameInput.trim(), host: true, joined: Date.now() };
+    await firebase.database().ref('rooms/' + code + '/players/' + id).set(player);
+    await firebase.database().ref('rooms/' + code + '/status').set('waiting');
+    myRef.current = firebase.database().ref('rooms/' + code + '/players/' + id);
+    setRoomCode(code);
+    setPlayerName(nameInput.trim());
+    setMyId(id);
+    setIsHost(true);
+    setScreen('waiting');
+  };
+
+  const joinRoom = async () => {
+    if (!nameInput.trim()) { setError('Digite seu nome'); return; }
+    if (!inputCode.trim()) { setError('Digite o código da sala'); return; }
+    const code = inputCode.trim().toUpperCase();
+    const snap = await firebase.database().ref('rooms/' + code).once('value');
+    if (!snap.exists()) { setError('Sala não encontrada'); return; }
+    const id = 'p_' + Date.now();
+    const player = { name: nameInput.trim(), host: false, joined: Date.now() };
+    await firebase.database().ref('rooms/' + code + '/players/' + id).set(player);
+    myRef.current = firebase.database().ref('rooms/' + code + '/players/' + id);
+    setRoomCode(code);
+    setPlayerName(nameInput.trim());
+    setMyId(id);
+    setIsHost(false);
+    setScreen('waiting');
+  };
+
+  const startOnlineGame = async (gameId) => {
+    // Host picks a game and writes it to Firebase — all clients navigate
+    await firebase.database().ref('rooms/' + roomCode + '/gameState').set({
+      game: gameId,
+      startedAt: Date.now(),
+      numPlayers: players.length,
+    });
+  };
+
+  // When gameState arrives, navigate to game (all clients)
+  useEffect(() => {
+    if (gameState && gameState.game && screen === 'waiting') {
+      setSelectedGame(gameState.game);
+      setNumPlayers(gameState.numPlayers);
+      setScreen('game');
+    }
+  }, [gameState, screen]);
+
+  const leaveRoom = () => {
+    if (myRef.current) myRef.current.remove();
+    myRef.current = null;
+    setRoomCode(''); setPlayers([]); setIsHost(false);
+    setMyId(null); setGameState(null); setSelectedGame(null);
+    setScreen('home');
+  };
+
+  // ── HOME ──
+  if (screen === 'home') return e('div', { style: sh.hubRoot },
+    e('div', { style: sh.hubBg }),
+    e('div', { style: { ...sh.hubScreen, gap: 28 } },
+      e('div', { style: sh.hubHeader },
+        e('div', { style: sh.hubLogo },
+          e('span', { style: sh.hubLogoText }, 'jogos'),
+          e('span', { style: sh.hubLogoDot }, '.')
+        ),
+        e('p', { style: sh.hubSubtitle }, 'cada um no próprio celular')
+      ),
+      e('div', { style: sh.modeGrid },
+        e('button', { style: sh.modeCard, onClick: () => { setError(''); setScreen('create'); } },
+          e('span', { style: sh.modeEmoji }, '🏠'),
+          e('span', { style: sh.modeName }, 'Criar sala'),
+          e('span', { style: sh.modeDesc }, 'Gere um código e compartilhe com seus amigos')
+        ),
+        e('button', { style: sh.modeCard, onClick: () => { setError(''); setScreen('join'); } },
+          e('span', { style: sh.modeEmoji }, '🚪'),
+          e('span', { style: sh.modeName }, 'Entrar na sala'),
+          e('span', { style: sh.modeDesc }, 'Digite o código recebido para entrar')
+        )
+      ),
+      e('div', { style: { borderTop: '1px solid #1a1a1a', width: '100%', paddingTop: 20 } },
+        e('p', { style: { ...sh.eyebrow, textAlign: 'center', marginBottom: 16 } }, 'ou jogue no mesmo celular'),
+        e('button', { style: { ...sh.ghostBtn, width: '100%' }, onClick: () => setScreen('local') }, 'Modo local →')
+      )
+    )
+  );
+
+  // ── LOCAL MODE (original Hub) ──
+  if (screen === 'local') return e(LocalHub, { onBack: () => setScreen('home') });
+
+  // ── CREATE ──
+  if (screen === 'create') return e('div', { style: sh.hubRoot },
+    e('div', { style: sh.hubBg }),
+    e('div', { style: { ...sh.hubScreen, gap: 20 } },
+      e('button', { style: sh.backBtn, onClick: () => setScreen('home') }, '← Voltar'),
+      e('span', { style: { fontSize: 48 } }, '🏠'),
+      e('p', { style: { ...sh.modeConfirmName, textAlign: 'center' } }, 'Criar sala'),
+      e('input', {
+        type: 'text', placeholder: 'Seu nome',
+        value: nameInput, onChange: ev => { setNameInput(ev.target.value); setError(''); },
+        style: { ...inputStyle }
+      }),
+      error ? e('p', { style: errorStyle }, error) : null,
+      e(Btn, { onClick: createRoom }, 'Criar sala')
+    )
+  );
+
+  // ── JOIN ──
+  if (screen === 'join') return e('div', { style: sh.hubRoot },
+    e('div', { style: sh.hubBg }),
+    e('div', { style: { ...sh.hubScreen, gap: 20 } },
+      e('button', { style: sh.backBtn, onClick: () => setScreen('home') }, '← Voltar'),
+      e('span', { style: { fontSize: 48 } }, '🚪'),
+      e('p', { style: { ...sh.modeConfirmName, textAlign: 'center' } }, 'Entrar na sala'),
+      e('input', {
+        type: 'text', placeholder: 'Seu nome',
+        value: nameInput, onChange: ev => { setNameInput(ev.target.value); setError(''); },
+        style: { ...inputStyle }
+      }),
+      e('input', {
+        type: 'text', placeholder: 'Código da sala (ex: AB3X7)',
+        value: inputCode, onChange: ev => { setInputCode(ev.target.value.toUpperCase()); setError(''); },
+        style: { ...inputStyle, letterSpacing: 4, textTransform: 'uppercase', textAlign: 'center', fontSize: 22 }
+      }),
+      error ? e('p', { style: errorStyle }, error) : null,
+      e(Btn, { onClick: joinRoom }, 'Entrar')
+    )
+  );
+
+  // ── WAITING ROOM ──
+  if (screen === 'waiting') return e('div', { style: sh.hubRoot },
+    e('div', { style: sh.hubBg }),
+    e('div', { style: { ...sh.hubScreen, gap: 20 } },
+      e('button', { style: sh.backBtn, onClick: leaveRoom }, '← Sair da sala'),
+      e('p', { style: sh.eyebrow }, 'Código da sala'),
+      e('div', { style: {
+        background: '#111', border: '1px solid #222', borderRadius: 8,
+        padding: '20px 32px', textAlign: 'center', width: '100%'
+      } },
+        e('span', { style: { color: '#c9a96e', fontSize: 40, fontWeight: 700, letterSpacing: 8, fontFamily: "'DM Serif Display',Georgia,serif" } }, roomCode),
+        e('p', { style: { color: '#444', fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase', marginTop: 8 } }, 'Compartilhe com seus amigos')
+      ),
+      e('div', { style: { width: '100%' } },
+        e('p', { style: { ...sh.eyebrow, marginBottom: 12 } }, players.length + ' na sala'),
+        e('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+          ...players.map((p, i) =>
+            e('div', { key: p.id, style: {
+              background: '#111', border: '1px solid #1a1a1a', borderRadius: 4,
+              padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10
+            } },
+              e('span', { style: { fontSize: 16 } }, p.host ? '👑' : '👤'),
+              e('span', { style: { color: '#e8e2d9', fontSize: 14 } }, p.name),
+              p.id === myId ? e('span', { style: { color: '#444', fontSize: 11, marginLeft: 'auto' } }, '(você)') : null
+            )
+          )
+        )
+      ),
+      isHost && players.length >= 2
+        ? e('div', { style: { width: '100%' } },
+            e('p', { style: { ...sh.eyebrow, marginBottom: 12, textAlign: 'center' } }, 'Escolha o jogo'),
+            e('div', { style: sh.gameGrid },
+              ...GAMES.map(g =>
+                e('button', { key: g.id, style: sh.modeCard, onClick: () => startOnlineGame(g.id) },
+                  e('span', { style: sh.modeEmoji }, g.emoji),
+                  e('span', { style: { ...sh.modeName, color: g.nameColor } }, g.name),
+                  e('span', { style: sh.modeDesc }, g.desc)
+                )
+              )
+            )
+          )
+        : isHost
+          ? e('p', { style: sh.instruction }, 'Aguardando mais jogadores entrarem...')
+          : e('p', { style: sh.instruction }, 'Aguardando o host iniciar o jogo...')
+    )
+  );
+
+  // ── GAME (online: each player sees their own screen) ──
+  if (screen === 'game' && selectedGame && numPlayers) {
+    // Find my index among sorted players
+    const sorted = [...players].sort((a, b) => a.joined - b.joined);
+    const myIndex = sorted.findIndex(p => p.id === myId);
+    const onBack = leaveRoom;
+
+    if (selectedGame === 'impostor') return e(OnlineImpostorGame, { 
+      numPlayers, myIndex, myName: playerName, players: sorted,
+      roomCode, isHost, db, myId, onBack 
+    });
+    if (selectedGame === 'age') return e(OnlineAgeGame, { 
+      numPlayers, myIndex, myName: playerName, players: sorted,
+      roomCode, isHost, db, onBack 
+    });
+    if (selectedGame === 'score') return e(OnlineScoreGame, { 
+      numPlayers, myIndex, myName: playerName, players: sorted,
+      roomCode, isHost, db, myId, onBack 
+    });
+  }
+
+  return null;
+}
+
+const inputStyle = {
+  width: '100%', background: '#111', border: '1px solid #222', borderRadius: 4,
+  color: '#e8e2d9', fontSize: 16, padding: '14px 16px', outline: 'none',
+  fontFamily: "'DM Sans',sans-serif",
+};
+const errorStyle = { color: '#e05555', fontSize: 12, letterSpacing: '1px', margin: 0, textAlign: 'center' };
+
+// ── ONLINE IMPOSTOR ────────────────────────────────────
+function OnlineImpostorGame({ numPlayers, myIndex, myName, players, roomCode, isHost, db, myId, onBack }) {
+  const [phase, setPhase] = useState('idle'); // idle | mode | category | shown | done
+  const [mode, setMode] = useState(null);
+  const [myWord, setMyWord] = useState(null);
+  const [category, setCategory] = useState(null);
+  const [hint, setHint] = useState(null);
+  const [speakerIdx, setSpeakerIdx] = useState(null);
+  const [isImpostor, setIsImpostor] = useState(false);
+  const [countdown, setCountdown] = useState(null);
+  const [totalCD, setTotalCD] = useState(4);
+  const [roundNum, setRoundNum] = useState(0);
+  const deckRef = useRef(shuffle(BASE_PAIRS));
+  const usedRef = useRef([]);
+  const e = React.createElement;
+
+  // Listen for game updates from host
+  useEffect(() => {
+    const ref = firebase.database().ref('rooms/' + roomCode + '/currentRound');
+    ref.on('value', snap => {
+      const data = snap.val();
+      if (!data) return;
+      setCategory(data.category);
+      setHint(data.hint);
+      setSpeakerIdx(data.speakerIdx);
+      setRoundNum(r => r + 1);
+      // Each player reads their own word
+      const myWord = data.words ? data.words[myIndex] : null;
+      setMyWord(myWord);
+      setIsImpostor(myWord === '__IMPOSTOR__');
+      setPhase('category');
+    });
+    return () => ref.off();
+  }, [roomCode, myIndex]);
+
+  const hostStartRound = async (m) => {
+    // Host generates and pushes round data
+    const entry = deckRef.current.length > 0 ? deckRef.current.shift() : BASE_PAIRS[Math.floor(Math.random() * BASE_PAIRS.length)];
+    usedRef.current.push(entry);
+    const [a, b] = entry.words;
+    const [majority, minority] = Math.random() < 0.5 ? [a, b] : [b, a];
+    const impostorIdx = Math.floor(Math.random() * numPlayers);
+    const spIdx = Math.floor(Math.random() * numPlayers);
+    const words = Array(numPlayers).fill(majority);
+    if (m === 'classic') words[impostorIdx] = minority;
+    else words[impostorIdx] = '__IMPOSTOR__';
+    await firebase.database().ref('rooms/' + roomCode + '/currentRound').set({
+      category: entry.category, hint: entry.hint, words, speakerIdx: spIdx, mode: m
+    });
+    setMode(m);
+  };
+
+  const showMyWord = () => {
+    const imp = myWord === '__IMPOSTOR__';
+    const first = speakerIdx === myIndex;
+    const secs = imp ? (first ? 7 : 5) : 4;
+    setTotalCD(secs); setCountdown(secs); setPhase('shown');
+  };
+
+  useEffect(() => {
+    if (phase !== 'shown' || countdown === null) return;
+    if (countdown <= 0) { setPhase('done'); setCountdown(null); return; }
+    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [phase, countdown]);
+
+  const showHint = isImpostor && speakerIdx === myIndex;
+
+  if (phase === 'idle' || phase === 'mode') return e('div', { style: sh.gameRoot },
+    e('div', { style: sh.bg }),
+    e(Screen, null,
+      e('div', { style: sh.gameHeader },
+        e('button', { style: sh.backBtn, onClick: onBack }, '← Sair'),
+        e('div', { style: sh.gameTitleSmall }, 'impostor', e('span', { style: sh.gameTitleDot }, '.'))
+      ),
+      e(Tag, null, myName),
+      isHost
+        ? e('div', { style: { width: '100%' } },
+            e('p', { style: { ...sh.eyebrow, marginBottom: 12, textAlign: 'center' } }, 'Escolha o modo'),
+            e('div', { style: sh.modeGrid },
+              e('button', { style: sh.modeCard, onClick: () => hostStartRound('classic') },
+                e('span', { style: sh.modeEmoji }, '🃏'),
+                e('span', { style: sh.modeName }, 'Clássico'),
+                e('span', { style: sh.modeDesc }, 'Todos recebem uma palavra — o impostor recebe a diferente')
+              ),
+              e('button', { style: sh.modeCard, onClick: () => hostStartRound('blind') },
+                e('span', { style: sh.modeEmoji }, '🕵️'),
+                e('span', { style: sh.modeName }, 'Impostor Cego'),
+                e('span', { style: sh.modeDesc }, 'O impostor sabe que é o impostor, mas não sabe a palavra')
+              )
+            )
+          )
+        : e('p', { style: sh.instruction }, 'Aguardando o host iniciar a rodada...')
+    )
+  );
+
+  if (phase === 'category') return e('div', { style: sh.gameRoot },
+    e('div', { style: sh.bg }),
+    e(Screen, null,
+      e('div', { style: sh.roundBadge }, 'Rodada ' + roundNum),
+      e('p', { style: sh.eyebrow }, 'Tema da rodada'),
+      e('div', { style: sh.categoryBox },
+        e('span', { style: { fontSize: 48 } }, CAT_ICONS[category] || '🎯'),
+        e('span', { style: sh.categoryText }, category)
+      ),
+      e('p', { style: sh.instruction }, 'Todos veem o tema — mas um de vocês é o impostor!'),
+      e(Btn, { onClick: showMyWord }, 'Ver minha palavra')
+    )
+  );
+
+  if (phase === 'shown') return e('div', { style: sh.gameRoot },
+    e('div', { style: sh.bg }),
+    e(Screen, null,
+      e(Tag, null, myName),
+      isImpostor
+        ? e('div', { style: sh.impostorBox },
+            e('span', { style: { fontSize: 32 } }, '🕵️'),
+            e('span', { style: sh.impostorLabel }, 'Você é o'),
+            e('span', { style: sh.impostorWord }, 'IMPOSTOR'),
+            showHint
+              ? e('div', { style: sh.hintBox },
+                  e('span', { style: sh.hintLabel }, '💡 Dica para começar'),
+                  e('span', { style: sh.hintText }, hint)
+                )
+              : e('span', { style: sh.impostorSubhint }, 'Finja que sabe e não seja pego!')
+          )
+        : e('div', { style: sh.wordBox }, e('span', { style: sh.wordText }, myWord)),
+      e(CountdownRing, { countdown, total: totalCD, color: isImpostor ? '#7c3f3f' : '#e8e2d9' }),
+      e('p', { style: sh.hint }, isImpostor ? 'Memorize. Ninguém pode saber.' : 'A palavra desaparecerá em breve')
+    )
+  );
+
+  if (phase === 'done') return e('div', { style: sh.gameRoot },
+    e('div', { style: sh.bg }),
+    e(Screen, null,
+      e('div', { style: sh.gameTitleSmall }, 'impostor', e('span', { style: sh.gameTitleDot }, '.')),
+      e('div', { style: sh.themePill },
+        e('span', null, CAT_ICONS[category] || '🎯'),
+        e('span', { style: sh.themePillText }, category)
+      ),
+      e('div', { style: sh.speakerBox },
+        e('p', { style: sh.speakerEyebrow }, 'Começa falando'),
+        e('p', { style: sh.speakerName }, players[speakerIdx]?.name || playerLabel(speakerIdx)),
+        e('p', { style: sh.speakerSub }, 'Os outros falam depois')
+      ),
+      isHost
+        ? e(Btn, { onClick: () => setPhase('idle') }, 'Próxima rodada')
+        : e('p', { style: sh.instruction }, 'Aguardando o host iniciar outra rodada...'),
+      e(Btn, { ghost: true, onClick: onBack }, 'Sair da sala')
+    )
+  );
+
+  return null;
+}
+
+// ── ONLINE IDADE ───────────────────────────────────────
+function OnlineAgeGame({ numPlayers, myIndex, myName, players, roomCode, isHost, db, onBack }) {
+  const [phase, setPhase] = useState('idle'); // idle | shown | done
+  const [myAge, setMyAge] = useState(null);
+  const [countdown, setCountdown] = useState(null);
+  const e = React.createElement;
+  const blueBg = 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(100,160,232,0.06) 0%, transparent 70%)';
+
+  useEffect(() => {
+    const ref = firebase.database().ref('rooms/' + roomCode + '/ageRound');
+    ref.on('value', snap => {
+      const data = snap.val();
+      if (!data || !data.ages) return;
+      setMyAge(data.ages[myIndex]);
+      setPhase('reveal');
+    });
+    return () => ref.off();
+  }, [roomCode, myIndex]);
+
+  const hostStart = async () => {
+    const pool = [];
+    while (pool.length < numPlayers) {
+      const age = Math.floor(Math.random() * 95) + 5;
+      if (!pool.includes(age)) pool.push(age);
+    }
+    await firebase.database().ref('rooms/' + roomCode + '/ageRound').set({ ages: pool, startedAt: Date.now() });
+  };
+
+  const showMyAge = () => { setCountdown(4); setPhase('shown'); };
+
+  useEffect(() => {
+    if (phase !== 'shown' || countdown === null) return;
+    if (countdown <= 0) { setPhase('done'); setCountdown(null); return; }
+    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [phase, countdown]);
+
+  if (phase === 'idle') return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: blueBg } }),
+    e(Screen, null,
+      e('div', { style: sh.gameHeader },
+        e('button', { style: sh.backBtn, onClick: onBack }, '← Sair'),
+        e('div', { style: { ...sh.gameTitleSmall, color: '#a8d4f5' } }, 'idade', e('span', { style: { ...sh.gameTitleDot, color: '#4a9fd4' } }, '.'))
+      ),
+      e(Tag, { color: '#4a9fd4' }, myName),
+      isHost
+        ? e(Btn, { onClick: hostStart, style: { background: '#4a9fd4', color: '#0f0f0f' } }, 'Distribuir idades')
+        : e('p', { style: sh.instruction }, 'Aguardando o host distribuir as idades...')
+    )
+  );
+
+  if (phase === 'reveal') return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: blueBg } }),
+    e(Screen, null,
+      e(Tag, { color: '#4a9fd4' }, myName),
+      e('p', { style: sh.instruction }, 'Toque para ver sua idade secreta'),
+      e('button', { style: { ...sh.bigBtn, borderColor: '#1a3a5a' }, onClick: showMyAge }, 'Ver minha idade')
+    )
+  );
+
+  if (phase === 'shown') return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: blueBg } }),
+    e(Screen, null,
+      e(Tag, { color: '#4a9fd4' }, myName),
+      e('div', { style: { ...sh.wordBox, background: '#060e18', borderColor: '#0d2a45', flexDirection: 'column', gap: 4 } },
+        e('span', { style: { color: '#4a9fd4', fontSize: 11, letterSpacing: 3, textTransform: 'uppercase' } }, 'sua idade é'),
+        e('span', { style: { ...sh.wordText, fontSize: 'clamp(52px,14vw,80px)', color: '#a8d4f5', letterSpacing: -2 } }, myAge),
+        e('span', { style: { color: '#1a4a6a', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase' } }, 'anos')
+      ),
+      e(CountdownRing, { countdown, total: 4, color: '#4a9fd4' }),
+      e('p', { style: sh.hint }, 'A idade desaparecerá em breve')
+    )
+  );
+
+  if (phase === 'done') return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: blueBg } }),
+    e(Screen, null,
+      e('div', { style: { ...sh.gameTitleSmall, color: '#a8d4f5' } }, 'idade', e('span', { style: { ...sh.gameTitleDot, color: '#4a9fd4' } }, '.')),
+      e('p', { style: sh.instruction }, 'Todos receberam suas idades. Façam perguntas e descubram!'),
+      e('div', { style: { ...sh.ruleCard, borderColor: '#0d2a45' } },
+        e(RuleRow, { icon: '❓', text: 'Perguntas como "você já foi à escola?" ou "você dirige?"' }),
+        e(RuleRow, { icon: '🚫', text: 'Não pode perguntar a idade diretamente!' }),
+        e(RuleRow, { icon: '🏆', text: 'Quem acertar a idade exata do outro vence' })
+      ),
+      isHost ? e(Btn, { onClick: hostStart, style: { background: '#4a9fd4', color: '#0f0f0f' } }, 'Nova rodada') : null,
+      e(Btn, { ghost: true, onClick: onBack }, 'Sair da sala')
+    )
+  );
+
+  return null;
+}
+
+// ── ONLINE NOTAS ───────────────────────────────────────
+function OnlineScoreGame({ numPlayers, myIndex, myName, players, roomCode, isHost, db, myId, onBack }) {
+  const [phase, setPhase] = useState('idle'); // idle | spin | done
+  const [myScore, setMyScore] = useState(null);
+  const [allScores, setAllScores] = useState(null);
+  const greenBg = 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(80,180,80,0.05) 0%, transparent 70%)';
+  const e = React.createElement;
+
+  useEffect(() => {
+    const ref = firebase.database().ref('rooms/' + roomCode + '/scoreRound');
+    ref.on('value', snap => {
+      const data = snap.val();
+      if (!data) return;
+      if (data.scores) { setAllScores(data.scores); setPhase('done'); }
+      else if (data.started) { setMyScore(null); setPhase('spin'); }
+    });
+    return () => ref.off();
+  }, [roomCode]);
+
+  const hostStart = async () => {
+    await firebase.database().ref('rooms/' + roomCode + '/scoreRound').set({ started: true, scores: null });
+  };
+
+  const handleSpinDone = async (score) => {
+    setMyScore(score);
+    await firebase.database().ref('rooms/' + roomCode + '/scoreRound/scores/' + myIndex).set(score);
+  };
+
+  // Check if all scores submitted → show results
+  useEffect(() => {
+    if (!allScores) return;
+    const vals = Object.values(allScores);
+    if (vals.length === numPlayers) setPhase('done');
+  }, [allScores, numPlayers]);
+
+  if (phase === 'idle') return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: greenBg } }),
+    e(Screen, null,
+      e('div', { style: sh.gameHeader },
+        e('button', { style: sh.backBtn, onClick: onBack }, '← Sair'),
+        e('div', { style: { ...sh.gameTitleSmall, color: '#a0e0a0' } }, 'notas', e('span', { style: { ...sh.gameTitleDot, color: '#4ab84a' } }, '.'))
+      ),
+      e(Tag, { color: '#4ab84a' }, myName),
+      isHost
+        ? e(Btn, { onClick: hostStart, style: { background: '#4ab84a', color: '#0a0a0a' } }, 'Iniciar rodada')
+        : e('p', { style: sh.instruction }, 'Aguardando o host iniciar...')
+    )
+  );
+
+  if (phase === 'spin') return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: greenBg } }),
+    e(Screen, null,
+      e(Tag, { color: '#4ab84a' }, myName),
+      myScore !== null
+        ? e('p', { style: sh.instruction }, 'Nota registrada! Aguardando os outros...')
+        : e(ScoreWheel, { key: myIndex, onDone: handleSpinDone })
+    )
+  );
+
+  if (phase === 'done' && allScores) return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: greenBg } }),
+    e(Screen, null,
+      e('div', { style: { ...sh.gameTitleSmall, color: '#a0e0a0' } }, 'notas', e('span', { style: { ...sh.gameTitleDot, color: '#4ab84a' } }, '.')),
+      e('p', { style: sh.instruction }, 'Todos giraram! Agora atuem e tentem descobrir a nota uns dos outros.'),
+      e('div', { style: { ...sh.ruleCard, gap: 0, padding: 0, overflow: 'hidden' } },
+        e('div', { style: { padding: '12px 16px', borderBottom: '1px solid #1a1a1a' } },
+          e('span', { style: { color: '#444', fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase' } }, 'Ranking de notas')
+        ),
+        ...Object.entries(allScores)
+          .map(([idx, s]) => ({ idx: parseInt(idx), s }))
+          .sort((a, b) => b.s - a.s)
+          .map((item, rank) => {
+            const sd = SCORE_DESCS[item.s];
+            const medal = rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : (rank + 1) + 'º';
+            const pname = players[item.idx]?.name || playerLabel(item.idx);
+            return e('div', { key: item.idx, style: { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid #111' } },
+              e('span', { style: { fontSize: 16, minWidth: 28 } }, medal),
+              e('span', { style: { color: '#e8e2d9', fontSize: 13, flex: 1 } }, pname),
+              e('span', { style: { color: '#555', fontSize: 12 } }, sd.emoji + ' ' + sd.label),
+              e('span', { style: { color: '#e8e2d9', fontSize: 20, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif", minWidth: 28, textAlign: 'right' } }, item.s)
+            );
+          })
+      ),
+      isHost ? e(Btn, { onClick: hostStart, style: { background: '#4ab84a', color: '#0a0a0a' } }, 'Nova rodada') : null,
+      e(Btn, { ghost: true, onClick: onBack }, 'Sair da sala')
+    )
+  );
+
+  if (phase === 'done') return e('div', { style: sh.gameRoot },
+    e('div', { style: { ...sh.bg, background: greenBg } }),
+    e(Screen, null, e('p', { style: sh.instruction }, 'Aguardando todos girarem a roleta...'))
+  );
+
+  return null;
+}
+
+// ── LOCAL HUB (original) ───────────────────────────────
+function LocalHub({ onBack }) {
+  const [screen, setScreen] = useState('hub');
+  const [selectedGame, setSelectedGame] = useState(null);
+  const [numPlayers, setNumPlayers] = useState(null);
+  const [inputVal, setInputVal] = useState('');
+  const e = React.createElement;
+
+  const selectGame = (g) => { setSelectedGame(g); setNumPlayers(null); setInputVal(''); setScreen('players'); };
+  const goHub = () => { setScreen('hub'); setSelectedGame(null); setNumPlayers(null); setInputVal(''); };
+  const handleConfirm = () => {
+    const n = parseInt(inputVal, 10);
+    if (!n || n < 2) return;
+    setNumPlayers(n); setScreen(selectedGame.id);
+  };
+
+  if (screen === 'impostor' && numPlayers) return e(ImpostorGame, { numPlayers, onBack: goHub });
+  if (screen === 'age' && numPlayers) return e(AgeGame, { numPlayers, onBack: goHub });
+  if (screen === 'score' && numPlayers) return e(ScoreGame, { numPlayers, onBack: goHub });
+
+  if (screen === 'hub') return e('div', { style: sh.hubRoot },
+    e('div', { style: sh.hubBg }),
+    e('div', { style: sh.hubScreen },
+      e('button', { style: sh.backBtn, onClick: onBack }, '← Voltar'),
+      e('div', { style: sh.hubHeader },
+        e('div', { style: sh.hubLogo },
+          e('span', { style: sh.hubLogoText }, 'jogos'),
+          e('span', { style: sh.hubLogoDot }, '.')
+        ),
+        e('p', { style: sh.hubSubtitle }, 'modo local — mesmo celular')
+      ),
+      e('div', { style: sh.gameGrid },
+        ...GAMES.map(g =>
+          e('button', { key: g.id, style: sh.gameCard, onClick: () => selectGame(g) },
+            e('div', { style: sh.gameCardTop },
+              e('span', { style: sh.gameCardEmoji }, g.emoji),
+              e('div', { style: sh.gameCardTags }, ...g.tags.map(t => e('span', { key: t, style: sh.gameTag }, t)))
+            ),
+            e('div', { style: sh.gameCardTitle },
+              e('span', { style: { ...sh.gameCardName, color: g.nameColor } }, g.name),
+              e('span', { style: { ...sh.gameCardDot, color: g.dotColor } }, g.dot)
+            ),
+            e('p', { style: sh.gameCardDesc }, g.desc),
+            e('div', { style: sh.gameCardFooter },
+              e('span', { style: sh.gameCardPlayers }, 'qualquer número'),
+              e('span', { style: sh.gameCardArrow }, '→')
+            )
+          )
+        ),
+        e('div', { style: sh.gameCardEmpty },
+          e('span', { style: sh.gameCardEmptyPlus }, '+'),
+          e('span', { style: sh.gameCardEmptyText }, 'Em breve')
+        )
+      )
+    )
+  );
+
+  if (screen === 'players' && selectedGame) {
+    const n = parseInt(inputVal, 10);
+    const valid = n >= 2;
+    return e('div', { style: sh.hubRoot },
+      e('div', { style: sh.hubBg }),
+      e('div', { style: { ...sh.hubScreen, gap: 20 } },
+        e('button', { style: sh.backBtn, onClick: goHub }, '← Hub'),
+        e('span', { style: { fontSize: 48 } }, selectedGame.emoji),
+        e('div', { style: sh.hubLogo },
+          e('span', { style: { ...sh.hubLogoText, fontSize: 'clamp(24px,6vw,34px)', color: selectedGame.nameColor } }, selectedGame.name),
+          e('span', { style: { ...sh.hubLogoDot, color: selectedGame.dotColor } }, selectedGame.dot)
+        ),
+        e('p', { style: sh.instruction }, 'Quantos jogadores vão jogar?'),
+        e('div', { style: { display: 'flex', gap: 10, width: '100%', alignItems: 'stretch' } },
+          e('input', {
+            type: 'number', min: 2, placeholder: 'Ex: 4',
+            value: inputVal, onChange: ev => setInputVal(ev.target.value.replace(/\D/g, '')),
+            style: { flex: 1, background: '#111', border: '1px solid #222', borderRadius: 4, color: '#e8e2d9', fontSize: 28, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif", padding: '16px 20px', outline: 'none', textAlign: 'center', letterSpacing: -1 }
+          }),
+          e('button', {
+            style: { ...sh.btn, width: 'auto', padding: '16px 28px', opacity: valid ? 1 : 0.35, flexShrink: 0 },
+            onClick: handleConfirm, disabled: !valid
+          }, 'Jogar →')
+        ),
+        !valid && inputVal.length > 0 ? e('p', { style: { color: '#5a2a2a', fontSize: 12, margin: 0 } }, 'Mínimo de 2 jogadores') : null
+      )
+    );
+  }
+  return null;
+}
+
+// ── STYLES ─────────────────────────────────────────────
+const sh = {
+  gameRoot: { minHeight: '100vh', background: '#0f0f0f', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans','Helvetica Neue',sans-serif", position: 'relative', overflow: 'hidden' },
+  bg: { position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(232,226,217,0.07) 0%, transparent 70%)', pointerEvents: 'none' },
+  hubRoot: { minHeight: '100vh', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans','Helvetica Neue',sans-serif", position: 'relative' },
+  hubBg: { position: 'fixed', inset: 0, background: 'radial-gradient(ellipse 100% 50% at 50% -10%, rgba(200,180,140,0.05) 0%, transparent 60%)', pointerEvents: 'none' },
+  hubScreen: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24, padding: '48px 20px', width: '100%', maxWidth: 440, minHeight: '100vh', boxSizing: 'border-box', justifyContent: 'center' },
+  hubHeader: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 },
+  hubLogo: { display: 'flex', alignItems: 'baseline', gap: 2 },
+  hubLogoText: { fontSize: 'clamp(36px,9vw,52px)', fontWeight: 300, letterSpacing: -2, color: '#e8e2d9', fontFamily: "'DM Serif Display',Georgia,serif" },
+  hubLogoDot: { fontSize: 'clamp(44px,11vw,62px)', fontWeight: 700, color: '#c9a96e', lineHeight: 1 },
+  hubSubtitle: { color: '#444', fontSize: 12, letterSpacing: '2px', textTransform: 'uppercase', margin: 0 },
+  gameGrid: { display: 'flex', flexDirection: 'column', gap: 12, width: '100%' },
+  gameCard: { background: '#111', border: '1px solid #1a1a1a', borderRadius: 8, padding: '20px', display: 'flex', flexDirection: 'column', gap: 10, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' },
+  gameCardTop: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  gameCardEmoji: { fontSize: 28, lineHeight: 1 },
+  gameCardTags: { display: 'flex', gap: 6 },
+  gameTag: { background: '#1a1a1a', color: '#444', fontSize: 10, letterSpacing: '1px', textTransform: 'uppercase', padding: '3px 8px', borderRadius: 2 },
+  gameCardTitle: { display: 'flex', alignItems: 'baseline', gap: 2 },
+  gameCardName: { fontSize: 'clamp(20px,5vw,26px)', fontWeight: 300, letterSpacing: -0.5, fontFamily: "'DM Serif Display',Georgia,serif" },
+  gameCardDot: { fontSize: 'clamp(24px,6vw,32px)', fontWeight: 700, lineHeight: 1 },
+  gameCardDesc: { color: '#555', fontSize: 13, lineHeight: '1.6', margin: 0 },
+  gameCardFooter: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
+  gameCardPlayers: { color: '#333', fontSize: 11, letterSpacing: '1.5px', textTransform: 'uppercase' },
+  gameCardArrow: { color: '#333', fontSize: 16 },
+  gameCardEmpty: { background: 'transparent', border: '1px dashed #1a1a1a', borderRadius: 8, padding: '28px 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 },
+  gameCardEmptyPlus: { color: '#222', fontSize: 24, fontWeight: 300 },
+  gameCardEmptyText: { color: '#222', fontSize: 12, letterSpacing: '2px', textTransform: 'uppercase' },
+  playersGrid: { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, width: '100%' },
+  playerNumBtn: { background: '#111', border: '1px solid #1a1a1a', borderRadius: 6, padding: '20px 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: 'inherit' },
+  playerNumBig: { color: '#e8e2d9', fontSize: 32, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" },
+  playerNumLabel: { color: '#444', fontSize: 10, letterSpacing: '1.5px', textTransform: 'uppercase' },
+  screen: { position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 24, padding: '40px 20px', width: '100%', maxWidth: 420, minHeight: '100vh', boxSizing: 'border-box' },
+  gameHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: -8 },
+  backBtn: { background: 'transparent', border: 'none', color: '#444', fontSize: 12, letterSpacing: '1.5px', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'inherit', padding: '6px 0' },
+  gameTitleSmall: { fontSize: 'clamp(20px,5vw,26px)', fontWeight: 300, letterSpacing: -1, color: '#e8e2d9', fontFamily: "'DM Serif Display',Georgia,serif", display: 'flex', alignItems: 'baseline' },
+  gameTitleDot: { fontSize: 'clamp(24px,6vw,32px)', fontWeight: 700, color: '#c9a96e', lineHeight: 1 },
+  tag: { border: '1px solid #2a2a2a', fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase', padding: '8px 20px', borderRadius: 1, background: 'transparent' },
+  eyebrow: { color: '#444', fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase', margin: 0 },
+  instruction: { color: '#555', fontSize: 14, textAlign: 'center', lineHeight: '1.75', margin: 0, maxWidth: 300 },
+  hint: { color: '#333', fontSize: 11, letterSpacing: '1.5px', textTransform: 'uppercase', margin: 0 },
+  roundBadge: { color: '#333', fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase', border: '1px solid #1e1e1e', borderRadius: 100, padding: '5px 14px' },
+  modeGrid: { display: 'flex', flexDirection: 'column', gap: 12, width: '100%' },
+  modeCard: { background: '#111', border: '1px solid #1e1e1e', borderRadius: 6, padding: '20px 18px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' },
+  modeEmoji: { fontSize: 26, lineHeight: 1, marginBottom: 2 },
+  modeName: { color: '#e8e2d9', fontSize: 15, fontWeight: 500, letterSpacing: -0.3 },
+  modeDesc: { color: '#555', fontSize: 13, lineHeight: '1.5' },
+  modeConfirmName: { color: '#e8e2d9', fontSize: 'clamp(20px,5vw,26px)', fontWeight: 300, letterSpacing: -0.5, fontFamily: "'DM Serif Display',Georgia,serif", margin: 0 },
+  loadingBox: { display: 'flex', alignItems: 'center', gap: 12 },
+  loadingDot: { width: 8, height: 8, borderRadius: '50%', background: '#c9a96e' },
+  loadingText: { color: '#444', fontSize: 13, letterSpacing: '1.5px', textTransform: 'uppercase' },
+  categoryBox: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, background: '#161616', border: '1px solid #222', borderRadius: 4, padding: '36px 56px' },
+  categoryText: { color: '#e8e2d9', fontSize: 'clamp(20px,5vw,26px)', fontWeight: 300, letterSpacing: -0.5, fontFamily: "'DM Serif Display',Georgia,serif" },
+  themePill: { display: 'flex', alignItems: 'center', gap: 8, background: '#161616', border: '1px solid #222', borderRadius: 100, padding: '8px 18px' },
+  themePillText: { color: '#888', fontSize: 12, letterSpacing: '1.5px', textTransform: 'uppercase' },
+  btn: { background: '#e8e2d9', color: '#0f0f0f', border: 'none', borderRadius: 2, padding: '16px 32px', fontSize: 13, fontWeight: 600, letterSpacing: '1.5px', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'inherit', width: '100%' },
+  bigBtn: { background: 'transparent', color: '#e8e2d9', border: '1px solid #2a2a2a', borderRadius: 2, padding: '20px 40px', fontSize: 13, fontWeight: 500, letterSpacing: '2px', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'inherit' },
+  ghostBtn: { background: 'transparent', color: '#444', border: '1px solid #1e1e1e', borderRadius: 2, padding: '12px 24px', fontSize: 12, letterSpacing: '1.5px', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'inherit', width: '100%' },
+  wordBox: { background: '#161616', border: '1px solid #222', borderRadius: 4, padding: '40px 48px', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', boxSizing: 'border-box' },
+  wordText: { color: '#e8e2d9', fontSize: 'clamp(22px,6vw,32px)', fontWeight: 300, letterSpacing: -0.5, fontFamily: "'DM Serif Display',Georgia,serif", textAlign: 'center' },
+  impostorBox: { background: '#120a0a', border: '1px solid #3a1515', borderRadius: 4, padding: '28px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: '100%', boxSizing: 'border-box' },
+  impostorLabel: { color: '#7c3f3f', fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase' },
+  impostorWord: { color: '#e05555', fontSize: 'clamp(26px,7vw,36px)', fontWeight: 300, letterSpacing: -0.5, fontFamily: "'DM Serif Display',Georgia,serif" },
+  impostorSubhint: { color: '#5a2a2a', fontSize: 12, textAlign: 'center', lineHeight: '1.6', marginTop: 4 },
+  hintBox: { marginTop: 8, background: '#1a1008', border: '1px solid #4a3010', borderRadius: 4, padding: '14px 18px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, width: '100%', boxSizing: 'border-box' },
+  hintLabel: { color: '#a06020', fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase' },
+  hintText: { color: '#c9903a', fontSize: 13, textAlign: 'center', lineHeight: '1.6' },
+  speakerBox: { background: '#161616', border: '1px solid #222', borderRadius: 4, padding: '28px 36px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: '100%', boxSizing: 'border-box' },
+  speakerEyebrow: { color: '#444', fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase', margin: 0 },
+  speakerName: { color: '#e8e2d9', fontSize: 'clamp(22px,6vw,30px)', fontWeight: 300, letterSpacing: -0.5, fontFamily: "'DM Serif Display',Georgia,serif", margin: 0 },
+  speakerSub: { color: '#444', fontSize: 12, textAlign: 'center', lineHeight: '1.6', margin: 0 },
+  countdownRing: { position: 'relative', width: 64, height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  countdownNum: { position: 'absolute', color: '#e8e2d9', fontSize: 20, fontWeight: 300 },
+  ruleCard: { background: '#111', border: '1px solid #1a1a1a', borderRadius: 6, padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 16, width: '100%', boxSizing: 'border-box' },
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(OnlineHub));
+</script>
+</body>
+</html>
