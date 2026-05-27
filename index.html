@@ -218,22 +218,26 @@ async function generateIdentities(categories, numPlayers, usedNames) {
   }
 }
 
-async function generateDestinoWord(theme) {
+async function generateDestinoWord(theme, usedWords = []) {
   try {
-    const prompt = `Você é um gerador de palavras para o jogo "O Próximo Destino".\nTema: ${theme}\nGere UMA palavra/nome criativo e interessante para o tema, em português.\nResponda SOMENTE o nome, sem nenhuma explicação ou aspas.`;
+    const usedStr = usedWords.length > 0 ? `\nNão repita estas palavras já usadas: ${usedWords.join(', ')}.` : '';
+    const prompt = `Você é um gerador de palavras para o jogo "Decifra".\nTema: ${theme}${usedStr}\nGere UMA palavra/nome criativo e interessante para o tema, em português. Seja variado e criativo.\nResponda SOMENTE o nome, sem nenhuma explicação ou aspas.`;
     
     const textoLimpo = await callGemini(prompt);
-    return textoLimpo;
+    return textoLimpo.trim();
   } catch (error) {
     console.error("Erro na IA do Destino (Palavra), usando fallback:", error);
     const defaultTema = DESTINO_BASE[theme] ? theme : 'Filmes';
-    return DESTINO_BASE[defaultTema].word;
+    const used = new Set(usedWords.map(w => w.toLowerCase()));
+    if (!used.has(DESTINO_BASE[defaultTema].word.toLowerCase())) return DESTINO_BASE[defaultTema].word;
+    const allWords = Object.values(DESTINO_BASE).map(v => v.word).filter(w => !used.has(w.toLowerCase()));
+    return allWords[0] || DESTINO_BASE[defaultTema].word;
   }
 }
 
 async function generateDestinoHints(word, theme) {
   try {
-    const prompt = `Você é um gerador de dicas para o jogo "O Próximo Destino".\nPalavra secreta: "${word}"\nTema: ${theme}\n\nGere EXATAMENTE 5 dicas em ordem da MAIS DIFÍCIL para a MAIS FÁCIL.\nDica 1: muito vaga (quase impossível)\nDica 5: quase entrega a resposta\n\nResponda SOMENTE JSON: {"dicas":["dica1","dica2","dica3","dica4","dica5"]}. Sem textos extras.`;
+    const prompt = `Você é um gerador de dicas para o jogo "Decifra".\nPalavra secreta: "${word}"\nTema: ${theme}\n\nGere EXATAMENTE 5 dicas em ordem da MAIS DIFÍCIL para a MAIS FÁCIL.\nDica 1: muito vaga (quase impossível)\nDica 5: quase entrega a resposta\n\nResponda SOMENTE JSON: {"dicas":["dica1","dica2","dica3","dica4","dica5"]}. Sem textos extras.`;
     
     const textoLimpo = await callGemini(prompt);
     const parsed = JSON.parse(textoLimpo);
@@ -1238,115 +1242,164 @@ function QuemSouEuGame({ numPlayers, onBack }) {
   return null;
 }
 
-// ── O PRÓXIMO DESTINO ─────────────────────────────────
+// ── DECIFRA. ──────────────────────────────────────────
 function DestinoGame({ numPlayers, onBack }) {
   const e = React.createElement;
   const roseBg = 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(224,96,128,0.07) 0%, transparent 70%)';
-  const P = { MODE:'mode', AISETUP:'aisetup', SETUP:'setup', WAIT:'wait', PLAYING:'playing', GUESSED:'guessed', REVEAL:'reveal', END:'end' };
+  const P = { MODE:'mode', AISETUP:'aisetup', SETUP:'setup', PLAYING:'playing', RESULT:'result' };
+
+  // Estado geral
   const [phase, setPhase] = useState(P.MODE);
   const [gameMode, setGameMode] = useState(null);
-  const [selectedTheme, setSelectedTheme] = useState('Cidades do Mundo');
+  const [selectedTheme, setSelectedTheme] = useState('Comidas');
   const [secretWord, setSecretWord] = useState('');
   const [wordInput, setWordInput] = useState('');
   const [hints, setHints] = useState([]);
   const [customHints, setCustomHints] = useState(['','','','','']);
   const [currentHint, setCurrentHint] = useState(0);
-  const [scores, setScores] = useState([0, 0]);
-  const [currentPlayer, setCurrentPlayer] = useState(0); 
-  const [playerNames] = useState(['Jogador 1', 'Jogador 2']);
-  const [guessInput, setGuessInput] = useState('');
-  const [p1done, setP1done] = useState(false);
-  const [p2done, setP2done] = useState(false);
-  const [roundWinner, setRoundWinner] = useState(null);
-  const [loading, setLoading] = useState(false);
   const [hintMode, setHintMode] = useState('ai');
+  const [loading, setLoading] = useState(false);
   const [roundNum, setRoundNum] = useState(1);
 
+  // Estado por jogador: guesses[i] = { input, submitted, correct, passed }
+  const makePlayerState = () => Array.from({ length: numPlayers }, () => ({ input: '', submitted: false, correct: false, passed: false }));
+  const [players, setPlayers] = useState(makePlayerState);
+  const [scores, setScores] = useState(Array(numPlayers).fill(0));
+  const [roundWinners, setRoundWinners] = useState([]); // índices de quem acertou nessa rodada
+
+  // Histórico de palavras usadas para não repetir
+  const usedWordsRef = useRef([]);
+
   const pointsForHint = (h) => Math.max(1, 5 - h);
+
+  // Atualiza o campo de input de um jogador
+  const setPlayerInput = (i, val) => {
+    setPlayers(prev => { const n = [...prev]; n[i] = { ...n[i], input: val }; return n; });
+  };
+
+  // Jogador envia palpite
+  const submitPlayer = (i) => {
+    const guess = players[i].input.trim();
+    if (!guess) return;
+    const correct = guess.toLowerCase() === secretWord.toLowerCase();
+    setPlayers(prev => {
+      const n = [...prev];
+      n[i] = { ...n[i], submitted: true, correct, input: guess };
+      return n;
+    });
+    if (correct) {
+      const pts = pointsForHint(currentHint);
+      setScores(prev => { const n = [...prev]; n[i] += pts; return n; });
+      setRoundWinners(prev => [...prev, i]);
+    }
+  };
+
+  // Jogador passa a vez
+  const passPlayer = (i) => {
+    setPlayers(prev => { const n = [...prev]; n[i] = { ...n[i], passed: true }; return n; });
+  };
+
+  // Verifica se todos terminaram nessa dica (submeteram ou passaram)
+  const allDone = (ps) => ps.every(p => p.submitted || p.passed);
+
+  // Avança para próxima dica ou fim
+  const advanceHint = () => {
+    if (currentHint < 4) {
+      setCurrentHint(h => h + 1);
+      // Reseta apenas quem não acertou ainda
+      setPlayers(prev => prev.map(p => p.correct ? p : { input: '', submitted: false, correct: false, passed: false }));
+    } else {
+      setPhase(P.RESULT);
+    }
+  };
+
+  // Quando todos terminam numa dica, checa se pode avançar
+  useEffect(() => {
+    if (phase !== P.PLAYING) return;
+    if (allDone(players)) {
+      // Pequeno delay para mostrar feedback antes de avançar
+      const t = setTimeout(() => advanceHint(), 1200);
+      return () => clearTimeout(t);
+    }
+  }, [players, phase]);
 
   const startAIMode = async () => {
     setLoading(true);
     try {
-      const word = await generateDestinoWord(selectedTheme);
+      const word = await generateDestinoWord(selectedTheme, usedWordsRef.current);
+      usedWordsRef.current = [...usedWordsRef.current, word];
       setSecretWord(word);
       const h = await generateDestinoHints(word, selectedTheme);
       setHints(h);
-      setCurrentHint(0); setP1done(false); setP2done(false); setCurrentPlayer(0); setGuessInput('');
-      setLoading(false); setPhase(P.PLAYING);
+      setCurrentHint(0);
+      setPlayers(makePlayerState());
+      setRoundWinners([]);
+      setLoading(false);
+      setPhase(P.PLAYING);
     } catch(ex) { setLoading(false); }
   };
 
   const startHumanMode = async () => {
     setLoading(true);
     try {
+      const word = wordInput.trim();
+      usedWordsRef.current = [...usedWordsRef.current, word];
+      setSecretWord(word);
       if (hintMode === 'ai') {
-        const h = await generateDestinoHints(wordInput.trim(), selectedTheme);
+        const h = await generateDestinoHints(word, selectedTheme);
         setHints(h);
       } else {
         setHints(customHints);
       }
-      setSecretWord(wordInput.trim());
-      setCurrentHint(0); setP1done(false); setP2done(false); setCurrentPlayer(1); setGuessInput('');
-      setLoading(false); setPhase(P.PLAYING);
+      setCurrentHint(0);
+      setPlayers(makePlayerState());
+      setRoundWinners([]);
+      setLoading(false);
+      setPhase(P.PLAYING);
     } catch(ex) { setLoading(false); }
   };
 
-  const submitGuess = (guess) => {
-    const correct = guess.trim().toLowerCase() === secretWord.toLowerCase();
-    if (correct) {
-      const pts = pointsForHint(currentHint);
-      const newScores = [...scores];
-      newScores[currentPlayer] += pts;
-      setScores(newScores);
-      setRoundWinner(currentPlayer);
-      setPhase(P.GUESSED);
-      return;
-    }
-    if (currentPlayer === 0) { setP1done(true); setCurrentPlayer(1); }
-    else { setP2done(true); advanceHint(); }
-    setGuessInput('');
+  const nextRound = () => {
+    setRoundNum(r => r + 1);
+    setPhase(P.MODE);
+    setGameMode(null);
+    setWordInput('');
+    setCustomHints(['','','','','']);
+    setRoundWinners([]);
   };
 
-  const passTurn = () => {
-    if (currentPlayer === 0) { setP1done(true); setCurrentPlayer(1); }
-    else { setP2done(true); advanceHint(); }
-  };
-
-  const advanceHint = () => {
-    setP1done(false); setP2done(false); setCurrentPlayer(0);
-    if (currentHint < 4) { setCurrentHint(h => h + 1); }
-    else { setPhase(P.REVEAL); }
-  };
-
-  const nextRound = () => { setRoundNum(r => r + 1); setPhase(P.MODE); setGameMode(null); setRoundWinner(null); setHints([]); setSecretWord(''); setWordInput(''); setCustomHints(['','','','','']); };
-
+  // ── TELA: MODO ──
   if (phase === P.MODE) return e('div', { style: sh.gameRoot },
     e('div', { style: { ...sh.bg, background: roseBg } }),
     e(Screen, null,
       e('div', { style: sh.gameHeader }, e('button', { style: sh.backBtn, onClick: onBack }, '← Hub')),
-      e('div', { style: { ...sh.gameTitleSmall, justifyContent: 'center' } }, 'O Próximo Destino', e('span', { style: { ...sh.gameTitleDot, color: '#e06080' } }, '.')),
-      e('p', { style: { color: '#555', fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase', textAlign: 'center', marginBottom: 4 } }, 'Rodada ' + roundNum),
+      e('div', { style: { ...sh.gameTitleSmall, justifyContent: 'center' } }, 'decifra', e('span', { style: { ...sh.gameTitleDot, color: '#e06080' } }, '.')),
+      e('p', { style: { color: '#555', fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase', textAlign: 'center' } }, 'Rodada ' + roundNum + ' · ' + numPlayers + ' jogadores'),
       e('div', { style: { ...sh.modeGrid, width: '100%' } },
         e('button', { style: sh.modeCard, onClick: () => { setGameMode('ai'); setPhase(P.AISETUP); } },
           e('span', { style: sh.modeEmoji }, '🤖'),
-          e('span', { style: sh.modeName }, 'IA Generativa (Modo Rápido)'),
-          e('span', { style: sh.modeDesc }, 'O sistema sorteia a palavra e cria as dicas automaticamente')
+          e('span', { style: sh.modeName }, 'IA sorteia a palavra'),
+          e('span', { style: sh.modeDesc }, 'A IA escolhe a palavra secreta e cria as dicas — todos tentam adivinhar ao mesmo tempo')
         ),
         e('button', { style: sh.modeCard, onClick: () => { setGameMode('human'); setPhase(P.SETUP); } },
           e('span', { style: sh.modeEmoji }, '✍️'),
-          e('span', { style: sh.modeName }, 'Criador Humano'),
-          e('span', { style: sh.modeDesc }, 'Um jogador inventa a palavra e escolhe as dicas')
+          e('span', { style: sh.modeName }, 'Jogador cria a palavra'),
+          e('span', { style: sh.modeDesc }, 'Um jogador inventa a palavra e as dicas — os outros tentam adivinhar')
         )
       ),
-      e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '0 4px' } },
-        ...scores.map((s, ti) => e('div', { key: ti, style: { textAlign: 'center' } },
-          e('p', { style: { color: '#c06080', fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 4 } }, playerNames[ti]),
-          e('p', { style: { color: '#e8e2d9', fontSize: 24, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, s + ' pts')
+      scores.some(s => s > 0) ? e('div', { style: { ...sh.ruleCard, gap: 0, padding: 0, overflow: 'hidden', width: '100%' } },
+        e('div', { style: { padding: '10px 16px', borderBottom: '1px solid #1a1a1a' } },
+          e('span', { style: { color: '#444', fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase' } }, 'Placar')
+        ),
+        ...scores.map((s, i) => e('div', { key: i, style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderBottom: i < scores.length-1 ? '1px solid #111' : 'none' } },
+          e('span', { style: { color: '#e8e2d9', fontSize: 13 } }, 'Jogador ' + (i+1)),
+          e('span', { style: { color: '#f0a0b8', fontSize: 16, fontWeight: 600, fontFamily: "'DM Serif Display',Georgia,serif" } }, s + ' pts')
         ))
-      )
+      ) : null
     )
   );
 
+  // ── TELA: SETUP IA ──
   if (phase === P.AISETUP) return e('div', { style: sh.gameRoot },
     e('div', { style: { ...sh.bg, background: roseBg } }),
     e(Screen, null,
@@ -1364,19 +1417,20 @@ function DestinoGame({ numPlayers, onBack }) {
     )
   );
 
+  // ── TELA: SETUP HUMANO ──
   if (phase === P.SETUP) return e('div', { style: sh.gameRoot },
     e('div', { style: { ...sh.bg, background: roseBg } }),
     e(Screen, null,
       e('button', { style: sh.backBtn, onClick: () => { setGameMode(null); setPhase(P.MODE); } }, '← Voltar'),
-      e('p', { style: sh.eyebrow }, 'Criador Humano — ' + playerNames[0] + ' configura'),
+      e('p', { style: sh.eyebrow }, 'Jogador 1 — configure a rodada'),
       e('input', {
         type: 'text', placeholder: 'Palavra secreta...',
         value: wordInput, onChange: ev => setWordInput(ev.target.value),
         style: { ...inputStyle }
       }),
-      e('p', { style: { color: '#444', fontSize: 12, letterSpacing: '2px', textTransform: 'uppercase', marginTop: 4 } }, 'Como quer as dicas?'),
+      e('p', { style: { color: '#444', fontSize: 12, letterSpacing: '2px', textTransform: 'uppercase' } }, 'Dicas'),
       e('div', { style: { display: 'flex', gap: 8, width: '100%' } },
-        ...[['ai','IA gera as dicas'],['manual','Digitar manualmente']].map(([v, label]) =>
+        ...[['ai','IA cria as dicas'],['manual','Escrever manualmente']].map(([v, label]) =>
           e('button', { key: v, onClick: () => setHintMode(v),
             style: { flex: 1, padding: '10px', border: hintMode === v ? '1px solid #e06080' : '1px solid #1e1e1e',
               background: hintMode === v ? '#1a060e' : '#111', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit',
@@ -1385,7 +1439,8 @@ function DestinoGame({ numPlayers, onBack }) {
       ),
       hintMode === 'manual' ? e('div', { style: { width: '100%', display: 'flex', flexDirection: 'column', gap: 8 } },
         ...customHints.map((h, i) => e('input', {
-          key: i, type: 'text', placeholder: 'Dica ' + (i+1) + (i===0?' (mais difícil)':i===4?' (mais fácil)':'') + '...',
+          key: i, type: 'text',
+          placeholder: 'Dica ' + (i+1) + (i===0 ? ' — mais difícil' : i===4 ? ' — mais fácil' : ''),
           value: h, onChange: ev => setCustomHints(prev => { const n=[...prev]; n[i]=ev.target.value; return n; }),
           style: { ...inputStyle, fontSize: 13 }
         }))
@@ -1400,69 +1455,97 @@ function DestinoGame({ numPlayers, onBack }) {
     )
   );
 
+  // ── TELA: JOGO (simultâneo) ──
   if (phase === P.PLAYING) {
     const hint = hints[currentHint] || '...';
-    const myTurn = !p1done && currentPlayer === 0 || !p2done && currentPlayer === 1;
+    const pts = pointsForHint(currentHint);
+    const anyCorrect = players.some(p => p.correct);
     return e('div', { style: sh.gameRoot },
       e('div', { style: { ...sh.bg, background: roseBg } }),
       e(Screen, null,
+        // Cabeçalho dica
         e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' } },
           e('span', { style: { color: '#e06080', fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase' } }, 'Dica ' + (currentHint+1) + ' de 5'),
-          e('span', { style: { color: '#444', fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase' } }, pointsForHint(currentHint) + ' pts se acertar')
+          e('span', { style: { color: anyCorrect ? '#4ab84a' : '#444', fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase' } }, pts + ' pts')
         ),
-        e('div', { style: { ...sh.wordBox, background: '#0f060a', borderColor: '#3a0a1a', padding: '32px 24px' } },
-          e('span', { style: { ...sh.wordText, color: '#f0a0b8', textAlign: 'center', lineHeight: '1.5' } }, hint)
+        // Caixa da dica
+        e('div', { style: { ...sh.wordBox, background: '#0f060a', borderColor: '#3a0a1a', padding: '28px 24px' } },
+          e('span', { style: { ...sh.wordText, color: '#f0a0b8', textAlign: 'center', lineHeight: '1.5', fontSize: 'clamp(16px,4vw,22px)' } }, hint)
         ),
-        e('div', { style: { ...sh.speakerBox, background: '#110609', borderColor: '#2a0a14' } },
-          e('p', { style: { ...sh.speakerEyebrow, color: '#8a3050' } }, 'Vez de'),
-          e('p', { style: { ...sh.speakerName, color: '#f0a0b8' } }, playerNames[currentPlayer])
+        // Cards de cada jogador
+        e('div', { style: { width: '100%', display: 'flex', flexDirection: 'column', gap: 10 } },
+          ...players.map((p, i) => {
+            const done = p.submitted || p.passed;
+            const bgColor = p.correct ? '#0a1a0a' : p.submitted && !p.correct ? '#1a0a0a' : '#111';
+            const borderColor = p.correct ? '#1a4a1a' : p.submitted && !p.correct ? '#3a1a1a' : '#1e1e1e';
+            const labelColor = p.correct ? '#4ab84a' : p.submitted && !p.correct ? '#e05555' : '#555';
+            const label = p.correct ? '✓ Acertou!' : p.submitted && !p.correct ? '✗ Errou' : p.passed ? 'Passou' : 'Jogador ' + (i+1);
+            return e('div', { key: i, style: { background: bgColor, border: '1px solid ' + borderColor, borderRadius: 6, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 } },
+              e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
+                e('span', { style: { color: labelColor, fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase', fontWeight: done ? 600 : 400 } }, label),
+                done ? null : e('span', { style: { color: '#333', fontSize: 11 } }, '...')
+              ),
+              done ? null : e('div', { style: { display: 'flex', gap: 8 } },
+                e('input', {
+                  type: 'text',
+                  placeholder: 'Palpite...',
+                  value: p.input,
+                  onChange: ev => setPlayerInput(i, ev.target.value),
+                  onKeyDown: ev => { if (ev.key === 'Enter' && p.input.trim()) submitPlayer(i); },
+                  style: { ...inputStyle, flex: 1, fontSize: 14, padding: '10px 12px' }
+                }),
+                e('button', {
+                  onClick: () => p.input.trim() ? submitPlayer(i) : passPlayer(i),
+                  style: { ...sh.btn, width: 'auto', padding: '10px 16px', fontSize: 12,
+                    background: p.input.trim() ? '#e06080' : 'transparent',
+                    color: p.input.trim() ? '#fff' : '#444',
+                    border: p.input.trim() ? 'none' : '1px solid #1e1e1e' }
+                }, p.input.trim() ? '→' : 'Passar')
+              )
+            );
+          })
         ),
-        e('input', {
-          type: 'text', placeholder: 'Seu palpite...',
-          value: guessInput, onChange: ev => setGuessInput(ev.target.value),
-          onKeyDown: ev => { if (ev.key === 'Enter' && guessInput.trim()) submitGuess(guessInput); },
-          style: { ...inputStyle }
-        }),
-        e('div', { style: { display: 'flex', gap: 10, width: '100%' } },
-          e(Btn, { ghost: true, onClick: passTurn }, 'Passar vez'),
-          e(Btn, { onClick: () => guessInput.trim() && submitGuess(guessInput), disabled: !guessInput.trim(), style: { background: '#e06080', color: '#fff' } }, 'Enviar →')
-        )
+        // Indicador de progresso
+        allDone(players) ? e('p', { style: { color: '#555', fontSize: 12, letterSpacing: '1.5px', textTransform: 'uppercase', textAlign: 'center' } }, currentHint < 4 ? 'Avançando para próxima dica...' : 'Revelando resultado...') : null
       )
     );
   }
 
-  if (phase === P.GUESSED) return e('div', { style: sh.gameRoot },
-    e('div', { style: { ...sh.bg, background: roseBg } }),
-    e(Screen, null,
-      e('div', { style: { ...sh.wordBox, background: '#0f060a', borderColor: '#3a0a1a', flexDirection: 'column', gap: 8 } },
-        e('span', { style: { fontSize: 36 } }, '🎉'),
-        e('p', { style: { color: '#f0a0b8', fontSize: 16, fontWeight: 500 } }, playerNames[roundWinner] + ' acertou!'),
-        e('p', { style: { color: '#e8e2d9', fontSize: 32, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, secretWord),
-        e('p', { style: { color: '#c06080', fontSize: 13 } }, '+' + pointsForHint(currentHint) + ' pontos (Dica ' + (currentHint+1) + ')')
-      ),
-      e('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '0 4px' } },
-        ...scores.map((s, ti) => e('div', { key: ti, style: { textAlign: 'center' } },
-          e('p', { style: { color: '#c06080', fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 4 } }, playerNames[ti]),
-          e('p', { style: { color: '#e8e2d9', fontSize: 24, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, s + ' pts')
-        ))
-      ),
-      e(Btn, { onClick: nextRound, style: { background: '#e06080', color: '#fff' } }, 'Próxima rodada →'),
-      e(Btn, { ghost: true, onClick: onBack }, 'Sair')
-    )
-  );
-
-  if (phase === P.REVEAL) return e('div', { style: sh.gameRoot },
-    e('div', { style: { ...sh.bg, background: roseBg } }),
-    e(Screen, null,
-      e('p', { style: sh.eyebrow }, 'Ninguém acertou!'),
-      e('div', { style: { ...sh.wordBox, background: '#0f060a', borderColor: '#3a0a1a', flexDirection: 'column', gap: 8 } },
-        e('p', { style: { color: '#6a3048', fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase' } }, 'A resposta era'),
-        e('p', { style: { color: '#f0a0b8', fontSize: 36, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, secretWord)
-      ),
-      e(Btn, { onClick: nextRound, style: { background: '#e06080', color: '#fff' } }, 'Próxima rodada →'),
-      e(Btn, { ghost: true, onClick: onBack }, 'Sair')
-    )
-  );
+  // ── TELA: RESULTADO ──
+  if (phase === P.RESULT) {
+    const winners = players.map((p, i) => ({ i, correct: p.correct })).filter(p => p.correct);
+    return e('div', { style: sh.gameRoot },
+      e('div', { style: { ...sh.bg, background: roseBg } }),
+      e(Screen, null,
+        e('div', { style: { ...sh.wordBox, background: '#0f060a', borderColor: '#3a0a1a', flexDirection: 'column', gap: 10 } },
+          e('span', { style: { fontSize: 32 } }, winners.length > 0 ? '🎉' : '😔'),
+          e('p', { style: { color: '#6a3048', fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase' } }, 'A resposta era'),
+          e('p', { style: { color: '#f0a0b8', fontSize: 36, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif", textAlign: 'center' } }, secretWord),
+          winners.length > 0
+            ? e('p', { style: { color: '#4ab84a', fontSize: 13, textAlign: 'center' } }, winners.map(w => 'Jogador ' + (w.i+1)).join(' e ') + ' acertou' + (winners.length > 1 ? 'ram' : '') + '!')
+            : e('p', { style: { color: '#664', fontSize: 13 } }, 'Ninguém acertou dessa vez.')
+        ),
+        // Placar atualizado
+        e('div', { style: { ...sh.ruleCard, gap: 0, padding: 0, overflow: 'hidden', width: '100%' } },
+          e('div', { style: { padding: '10px 16px', borderBottom: '1px solid #1a1a1a' } },
+            e('span', { style: { color: '#444', fontSize: 10, letterSpacing: '2px', textTransform: 'uppercase' } }, 'Placar')
+          ),
+          ...[...scores.map((s, i) => ({ s, i }))].sort((a, b) => b.s - a.s).map((item, rank) =>
+            e('div', { key: item.i, style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', borderBottom: rank < scores.length-1 ? '1px solid #111' : 'none' } },
+              e('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                e('span', { style: { fontSize: 14 } }, rank === 0 && item.s > 0 ? '🥇' : rank === 1 && item.s > 0 ? '🥈' : rank === 2 && item.s > 0 ? '🥉' : ''),
+                e('span', { style: { color: '#e8e2d9', fontSize: 13 } }, 'Jogador ' + (item.i+1)),
+                players[item.i]?.correct ? e('span', { style: { color: '#4ab84a', fontSize: 11 } }, '+ ' + pointsForHint(currentHint) + ' pts') : null
+              ),
+              e('span', { style: { color: '#f0a0b8', fontSize: 18, fontWeight: 300, fontFamily: "'DM Serif Display',Georgia,serif" } }, item.s + ' pts')
+            )
+          )
+        ),
+        e(Btn, { onClick: nextRound, style: { background: '#e06080', color: '#fff' } }, 'Próxima rodada →'),
+        e(Btn, { ghost: true, onClick: onBack }, 'Sair')
+      )
+    );
+  }
 
   return null;
 }
@@ -1474,7 +1557,7 @@ const GAMES = [
   { id: 'score',    name: 'Notas',    dot: '.', dotColor: '#4ab84a', nameColor: '#a0e0a0', emoji: '🎰', desc: 'Gire a roleta, receba uma nota e faça os outros descobrirem qual é!', tags: ['roleta', 'atuação'] },
   { id: 'mimica',   name: 'Mímica',   dot: '.', dotColor: '#e07040', nameColor: '#f0b090', emoji: '🎭', desc: 'Times se revezam fazendo mímicas — quem acertar mais palavras vence!', tags: ['times', 'ação'] },
   { id: 'quemsoueu',name: 'Quem Sou Eu', dot: '?', dotColor: '#a070e0', nameColor: '#d0b0f0', emoji: '🎭', desc: 'Cada um tem uma identidade secreta — faça perguntas de sim/não para descobrir quem você é!', tags: ['dedução', 'perguntas'] },
-  { id: 'destino',  name: 'O Próximo Destino', dot: '.', dotColor: '#e06080', nameColor: '#f0a0b8', emoji: '💌', desc: 'Jogo assíncrono para casais — descubra a palavra com menos dicas possível!', tags: ['casal', 'assíncrono'] },
+  { id: 'destino',  name: 'Decifra', dot: '.', dotColor: '#e06080', nameColor: '#f0a0b8', emoji: '🔍', desc: 'Todos tentam adivinhar a palavra secreta ao mesmo tempo — com menos dicas, mais pontos!', tags: ['dedução', 'simultâneo'] },
 ];
 
 // ── FIREBASE CONFIG ────────────────────────────────────
