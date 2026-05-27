@@ -109,9 +109,41 @@ const CAT_ICONS = {
   'Objeto':'🎲','Data / Festa':'🎉','Natureza':'🌿',
 };
 
+// ── DADOS DE MÍMICA ────────────────────────────────────
+const MIMICA_TEMAS = [
+  'Filmes', 'Séries', 'Cultura Pop', 'Animais', 'Profissões',
+  'Esportes', 'Comidas', 'Ações Absurdas', 'Objetos do Dia a Dia', 'Lugares Famosos'
+];
+
+const MIMICA_BASE = {
+  'Filmes': ['Titanic','Matrix','Frozen','Homem-Aranha','O Rei Leão','Jurassic Park','Star Wars','Divertida Mente','Avatar','Interstellar'],
+  'Séries': ['Breaking Bad','Friends','Game of Thrones','Stranger Things','La Casa de Papel','Grey\'s Anatomy','The Office','Narcos','Dark','Squid Game'],
+  'Cultura Pop': ['Gangnam Style','Selfie','TikTok','Meme','Youtuber','Streamer','Influencer','NFT','Bitcoin','Viral'],
+  'Animais': ['Elefante','Girafa','Pinguim','Canguru','Gorila','Cobra','Tubarão','Polvo','Urso Panda','Flamingo'],
+  'Profissões': ['Bombeiro','Dentista','Piloto','Cirurgião','Palhaço','Mágico','Jornalista','Chef de Cozinha','Astronauta','Arqueólogo'],
+  'Esportes': ['Surf','Ginástica','Boxe','Natação','Tênis','Basquete','Futebol Americano','Vôlei de Praia','Esgrima','Polo Aquático'],
+  'Comidas': ['Sorvete','Sushi','Hambúrguer','Pizza','Pipoca','Algodão Doce','Churrasco','Tapioca','Açaí','Macarrão'],
+  'Ações Absurdas': ['Cair de paraquedas','Lutar com urso','Dançar no elevador','Nadar em geleia','Voar com jetpack','Andar de unicórnio','Tocar trompete embaixo d\'água','Fazer malabarismo com ovos','Correr em câmera lenta','Dirigir de olhos fechados'],
+  'Objetos do Dia a Dia': ['Guarda-chuva','Liquidificador','Ferro de passar','Escova de dente','Aspirador de pó','Martelo','Tesoura','Cabo de vassoura','Extintor de incêndio','Fone de ouvido'],
+  'Lugares Famosos': ['Torre Eiffel','Cristo Redentor','Estátua da Liberdade','Machu Picchu','Grande Muralha','Coliseu','Pirâmide do Egito','Taj Mahal','Big Ben','Cataratas do Iguaçu'],
+};
+
+// ── DADOS DE QUEM SOU EU ────────────────────────────────
+const QUEMSOUEU_CATS = [
+  'Celebridades', 'Personagens de Desenho', 'Heróis e Vilões',
+  'Personagens de Filmes', 'Cantores e Bandas', 'Atletas Famosos',
+  'Personagens Históricos', 'Personagens de Games'
+];
+
+// ── DADOS DO PRÓXIMO DESTINO ────────────────────────────
+const DESTINO_TEMAS = [
+  'Cidades do Mundo', 'Filmes', 'Comidas', 'Animais',
+  'Países', 'Celebridades', 'Objetos Curiosos', 'Personagens'
+];
+
 // ── CONFIGURAÇÃO DA IA (GEMINI) ────────────────────────
 // Cole sua chave aqui dentro das aspas!
-const GEMINI_API_KEY = "AIzaSyAM-CXptezUw6ErjUz--r2_XUkdU0Ph9DM"; 
+const GEMINI_API_KEY = "AIzaSyCt6I4We4tfEssxUsis62tCjhoelmN85HI"; 
 
 /**
  * Função central para chamar a API gratuita do Gemini.
@@ -1112,11 +1144,11 @@ function QuemSouEuGame({ numPlayers, onBack }) {
     e('div', { style: { ...sh.bg, background: purpleBg } }),
     e(Screen, null,
       e(Tag, { color: '#a070e0' }, 'Jogador ' + (cur + 1)),
-      e('p', { style: sh.instruction }, 'Passe o celular para o grupo ver, menos ' + ('Jogador ' + (cur + 1)) + '.\nTodos memorizam o personagem e devolvem.'),
+      e('p', { style: sh.instruction }, '👥 Grupo: todos vejam a identidade abaixo — menos o Jogador ' + (cur + 1) + '!\nMemorizem e devolvam o celular.'),
       e('div', { style: { ...sh.wordBox, background: '#110a1a', borderColor: '#2a1a4a' } },
         e('span', { style: { ...sh.wordText, color: '#d0b0f0' } }, identities[cur] || '...')
       ),
-      e(Btn, { onClick: showIdentity, style: { background: '#a070e0', color: '#fff' } }, 'Devolveram → Mostrar')
+      e(Btn, { onClick: showIdentity, style: { background: '#a070e0', color: '#fff' } }, 'Jogador ' + (cur + 1) + ' recebeu o celular →')
     )
   );
 
@@ -1125,11 +1157,11 @@ function QuemSouEuGame({ numPlayers, onBack }) {
     e(Screen, null,
       e(Tag, { color: '#a070e0' }, 'Jogador ' + (cur + 1)),
       e('div', { style: { ...sh.wordBox, background: '#110a1a', borderColor: '#2a1a4a', flexDirection: 'column', gap: 6 } },
-        e('p', { style: { color: '#6a408a', fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase' } }, 'Sua identidade está oculta'),
-        e('p', { style: { color: '#8a608a', fontSize: 13, textAlign: 'center', lineHeight: '1.6' } }, 'Faça perguntas de Sim ou Não para descobrir quem você é!')
+        e('p', { style: { color: '#6a408a', fontSize: 11, letterSpacing: '3px', textTransform: 'uppercase' } }, '🔒 Sua identidade está oculta para você'),
+        e('p', { style: { color: '#8a608a', fontSize: 13, textAlign: 'center', lineHeight: '1.6' } }, 'O grupo já sabe quem você é!\nFaça perguntas de Sim ou Não para descobrir.')
       ),
       e(CountdownRing, { countdown, total: 5, color: '#a070e0' }),
-      e('p', { style: sh.hint }, cur < numPlayers - 1 ? 'Passando para o próximo...' : 'Iniciando o jogo...')
+      e('p', { style: sh.hint }, cur < numPlayers - 1 ? 'Passando para o próximo jogador...' : 'Iniciando o jogo...')
     )
   );
 
@@ -1210,7 +1242,7 @@ function QuemSouEuGame({ numPlayers, onBack }) {
 function DestinoGame({ numPlayers, onBack }) {
   const e = React.createElement;
   const roseBg = 'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(224,96,128,0.07) 0%, transparent 70%)';
-  const P = { MODE:'mode', SETUP:'setup', WAIT:'wait', PLAYING:'playing', GUESSED:'guessed', REVEAL:'reveal', END:'end' };
+  const P = { MODE:'mode', AISETUP:'aisetup', SETUP:'setup', WAIT:'wait', PLAYING:'playing', GUESSED:'guessed', REVEAL:'reveal', END:'end' };
   const [phase, setPhase] = useState(P.MODE);
   const [gameMode, setGameMode] = useState(null);
   const [selectedTheme, setSelectedTheme] = useState('Cidades do Mundo');
@@ -1286,7 +1318,7 @@ function DestinoGame({ numPlayers, onBack }) {
     else { setPhase(P.REVEAL); }
   };
 
-  const nextRound = () => { setRoundNum(r => r + 1); setPhase(P.MODE); setRoundWinner(null); setHints([]); setSecretWord(''); setWordInput(''); setCustomHints(['','','','','']); };
+  const nextRound = () => { setRoundNum(r => r + 1); setPhase(P.MODE); setGameMode(null); setRoundWinner(null); setHints([]); setSecretWord(''); setWordInput(''); setCustomHints(['','','','','']); };
 
   if (phase === P.MODE) return e('div', { style: sh.gameRoot },
     e('div', { style: { ...sh.bg, background: roseBg } }),
@@ -1295,12 +1327,12 @@ function DestinoGame({ numPlayers, onBack }) {
       e('div', { style: { ...sh.gameTitleSmall, justifyContent: 'center' } }, 'O Próximo Destino', e('span', { style: { ...sh.gameTitleDot, color: '#e06080' } }, '.')),
       e('p', { style: { color: '#555', fontSize: 11, letterSpacing: '2px', textTransform: 'uppercase', textAlign: 'center', marginBottom: 4 } }, 'Rodada ' + roundNum),
       e('div', { style: { ...sh.modeGrid, width: '100%' } },
-        e('button', { style: sh.modeCard, onClick: () => setGameMode('ai') },
+        e('button', { style: sh.modeCard, onClick: () => { setGameMode('ai'); setPhase(P.AISETUP); } },
           e('span', { style: sh.modeEmoji }, '🤖'),
           e('span', { style: sh.modeName }, 'IA Generativa (Modo Rápido)'),
           e('span', { style: sh.modeDesc }, 'O sistema sorteia a palavra e cria as dicas automaticamente')
         ),
-        e('button', { style: sh.modeCard, onClick: () => setGameMode('human') },
+        e('button', { style: sh.modeCard, onClick: () => { setGameMode('human'); setPhase(P.SETUP); } },
           e('span', { style: sh.modeEmoji }, '✍️'),
           e('span', { style: sh.modeName }, 'Criador Humano'),
           e('span', { style: sh.modeDesc }, 'Um jogador inventa a palavra e escolhe as dicas')
@@ -1315,10 +1347,10 @@ function DestinoGame({ numPlayers, onBack }) {
     )
   );
 
-  if (gameMode === 'ai' && !loading && hints.length === 0 && phase === P.MODE) return e('div', { style: sh.gameRoot },
+  if (phase === P.AISETUP) return e('div', { style: sh.gameRoot },
     e('div', { style: { ...sh.bg, background: roseBg } }),
     e(Screen, null,
-      e('button', { style: sh.backBtn, onClick: () => setGameMode(null) }, '← Voltar'),
+      e('button', { style: sh.backBtn, onClick: () => { setGameMode(null); setPhase(P.MODE); } }, '← Voltar'),
       e('p', { style: sh.eyebrow }, 'Escolha o tema'),
       e('div', { style: { width: '100%', display: 'flex', flexDirection: 'column', gap: 8 } },
         ...DESTINO_TEMAS.map(t => e('button', { key: t, onClick: () => setSelectedTheme(t),
@@ -1332,10 +1364,10 @@ function DestinoGame({ numPlayers, onBack }) {
     )
   );
 
-  if (phase === P.MODE && gameMode === 'human') return e('div', { style: sh.gameRoot },
+  if (phase === P.SETUP) return e('div', { style: sh.gameRoot },
     e('div', { style: { ...sh.bg, background: roseBg } }),
     e(Screen, null,
-      e('button', { style: sh.backBtn, onClick: () => setGameMode(null) }, '← Voltar'),
+      e('button', { style: sh.backBtn, onClick: () => { setGameMode(null); setPhase(P.MODE); } }, '← Voltar'),
       e('p', { style: sh.eyebrow }, 'Criador Humano — ' + playerNames[0] + ' configura'),
       e('input', {
         type: 'text', placeholder: 'Palavra secreta...',
